@@ -2,7 +2,7 @@
 set -e
 
 echo "Pushing Prisma schema to database..."
-npx prisma db push --skip-generate
+npx prisma db push --skip-generate --accept-data-loss
 
 echo "Seeding database..."
 npx prisma db seed || echo "Seed completed (or already applied)"

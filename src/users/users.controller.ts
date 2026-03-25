@@ -1,28 +1,37 @@
-import { Controller, Get, UseGuards, NotFoundException } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Body, Controller, Get, Patch } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UsersService } from './users.service';
 
-@ApiTags('Users')
+/**
+ * Self-service profile endpoints.
+ * All routes require an authenticated JWT (guards are global).
+ */
+@ApiTags('Profile')
+@ApiBearerAuth()
 @Controller('me')
-export class UsersController {
+export class MeController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get current authenticated user' })
-  async getMe(@CurrentUser() currentUser: { id: string; email: string; role: string }) {
-    const user = await this.usersService.findById(currentUser.id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      createdAt: user.createdAt,
-    };
+  @ApiOperation({ summary: 'Get current authenticated user profile' })
+  async getMe(
+    @CurrentUser() currentUser: { id: string },
+  ) {
+    return this.usersService.findByIdSafe(currentUser.id);
+  }
+
+  @Patch()
+  @ApiOperation({ summary: 'Update own profile' })
+  async updateMe(
+    @CurrentUser() currentUser: { id: string },
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.usersService.updateProfile(currentUser.id, dto);
   }
 }

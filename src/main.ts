@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter, PrismaExceptionFilter } from './common/filters';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,6 +19,13 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
     }),
+  );
+
+  // Order matters: PrismaExceptionFilter (more specific) runs first,
+  // then HttpExceptionFilter catches any remaining HttpExceptions.
+  app.useGlobalFilters(
+    new PrismaExceptionFilter(),
+    new HttpExceptionFilter(),
   );
 
   app.enableCors();
