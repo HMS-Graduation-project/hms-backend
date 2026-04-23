@@ -146,7 +146,7 @@ export class AppointmentsService {
 
   // ──────────────────── Create ───────────────────────────────────────────
 
-  async create(dto: CreateAppointmentDto) {
+  async create(dto: CreateAppointmentDto, currentUser?: { id: string; role: string }) {
     // Validate that doctor exists
     const doctor = await this.prisma.doctorProfile.findUnique({
       where: { id: dto.doctorId },
@@ -158,14 +158,31 @@ export class AppointmentsService {
       );
     }
 
+    // Resolve patientId: if PATIENT role and no patientId provided, look up from current user
+    let patientId = dto.patientId;
+    if (currentUser?.role === 'PATIENT' && !patientId) {
+      const profile = await this.prisma.patientProfile.findUnique({
+        where: { userId: currentUser.id },
+        select: { id: true },
+      });
+      if (!profile) {
+        throw new NotFoundException('Patient profile not found for current user');
+      }
+      patientId = profile.id;
+    }
+
+    if (!patientId) {
+      throw new BadRequestException('patientId is required');
+    }
+
     // Validate that patient exists
     const patient = await this.prisma.patientProfile.findUnique({
-      where: { id: dto.patientId },
+      where: { id: patientId },
       select: { id: true },
     });
     if (!patient) {
       throw new NotFoundException(
-        `Patient profile with id "${dto.patientId}" not found`,
+        `Patient profile with id "${patientId}" not found`,
       );
     }
 
@@ -207,7 +224,7 @@ export class AppointmentsService {
     // Check: patient has no overlapping appointment
     const patientConflict = await this.prisma.appointment.findFirst({
       where: {
-        patientId: dto.patientId,
+        patientId,
         date: { gte: startOfDay, lte: endOfDay },
         startTime: dto.startTime,
         endTime: dto.endTime,
@@ -224,7 +241,7 @@ export class AppointmentsService {
 
     return this.prisma.appointment.create({
       data: {
-        patientId: dto.patientId,
+        patientId,
         doctorId: dto.doctorId,
         departmentId: dto.departmentId,
         date: appointmentDate,

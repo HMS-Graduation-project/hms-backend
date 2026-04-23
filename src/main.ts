@@ -1,11 +1,28 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter, PrismaExceptionFilter } from './common/filters';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+
+  // Structured logging via pino
+  app.useLogger(app.get(Logger));
+
+  // Security headers
+  app.use(helmet());
+
+  // Serve uploaded files as static assets at /uploads/*
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   app.setGlobalPrefix('api');
   app.enableVersioning({
@@ -28,7 +45,11 @@ async function bootstrap() {
     new HttpExceptionFilter(),
   );
 
-  app.enableCors();
+  // CORS with configurable origin
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN || '*',
+    credentials: true,
+  });
 
   const config = new DocumentBuilder()
     .setTitle('HMS API')
@@ -42,7 +63,9 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`HMS Backend running on: ${await app.getUrl()}`);
+
+  const logger = app.get(Logger);
+  logger.log(`HMS Backend running on: ${await app.getUrl()}`);
 }
 
 bootstrap();

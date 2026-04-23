@@ -35,9 +35,12 @@ model User {
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
-  doctorProfile  DoctorProfile?  @relation("DoctorUser")
-  patientProfile PatientProfile? @relation("PatientUser")
-  headOfDepartment Department?   @relation("DepartmentHead")
+  doctorProfile    DoctorProfile?  @relation("DoctorUser")
+  patientProfile   PatientProfile? @relation("PatientUser")
+  headOfDepartment Department?     @relation("DepartmentHead")
+  labResults       LabResult[]     @relation("LabTechnician")
+  dispensings      Dispensing[]    @relation("PharmacistDispensing")
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -78,6 +81,7 @@ model DoctorProfile {
   appointments    Appointment[]    @relation("DoctorAppointments")
   medicalRecords  MedicalRecord[]  @relation("DoctorRecords")
   prescriptions   Prescription[]   @relation("DoctorPrescriptions")
+  labOrders       LabOrder[]       @relation("DoctorLabOrders")
 
   @@map("doctor_profiles")
 }
@@ -100,6 +104,8 @@ model PatientProfile {
   appointments             Appointment[]   @relation("PatientAppointments")
   medicalRecords           MedicalRecord[] @relation("PatientRecords")
   prescriptions            Prescription[]  @relation("PatientPrescriptions")
+  labOrders                LabOrder[]      @relation("PatientLabOrders")
+  invoices                 Invoice[]       @relation("PatientInvoices")
 
   @@map("patient_profiles")
 }
@@ -148,6 +154,7 @@ model Appointment {
   notes         String?
   cancelReason  String?           @map("cancel_reason")
   medicalRecord MedicalRecord?
+  invoices      Invoice[]
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
@@ -171,6 +178,7 @@ model MedicalRecord {
   notes          String?
   vitalSigns     VitalSigns?
   prescriptions  Prescription[]
+  labOrders      LabOrder[]
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
@@ -212,6 +220,7 @@ model Prescription {
   status          PrescriptionStatus @default(PENDING)
   notes           String?
   items           PrescriptionItem[]
+  dispensings     Dispensing[]
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
@@ -230,4 +239,196 @@ model PrescriptionItem {
   instructions   String?
 
   @@map("prescription_items")
+}
+
+// ─── Phase 4: Support Services ──────────────────────────────────
+
+enum LabOrderStatus {
+  ORDERED
+  SAMPLE_COLLECTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model LabOrder {
+  id              String          @id @default(uuid())
+  medicalRecordId String?         @map("medical_record_id")
+  medicalRecord   MedicalRecord?  @relation(fields: [medicalRecordId], references: [id])
+  patientId       String          @map("patient_id")
+  patient         PatientProfile  @relation("PatientLabOrders", fields: [patientId], references: [id])
+  doctorId        String          @map("doctor_id")
+  doctor          DoctorProfile   @relation("DoctorLabOrders", fields: [doctorId], references: [id])
+  testName        String          @map("test_name")
+  testCategory    String?         @map("test_category")
+  status          LabOrderStatus  @default(ORDERED)
+  priority        String          @default("NORMAL") // NORMAL, URGENT, STAT
+  notes           String?
+  result          LabResult?
+  orderedAt       DateTime        @default(now()) @map("ordered_at")
+  completedAt     DateTime?       @map("completed_at")
+
+  @@map("lab_orders")
+}
+
+model LabResult {
+  id           String   @id @default(uuid())
+  labOrderId   String   @unique @map("lab_order_id")
+  labOrder     LabOrder @relation(fields: [labOrderId], references: [id])
+  result       String
+  normalRange  String?  @map("normal_range")
+  unit         String?
+  isAbnormal   Boolean  @default(false) @map("is_abnormal")
+  technicianId String?  @map("technician_id")
+  technician   User?    @relation("LabTechnician", fields: [technicianId], references: [id])
+  notes        String?
+  reportedAt   DateTime @default(now()) @map("reported_at")
+
+  @@map("lab_results")
+}
+
+model Medication {
+  id           String       @id @default(uuid())
+  name         String
+  genericName  String?      @map("generic_name")
+  category     String?
+  manufacturer String?
+  dosageForm   String?      @map("dosage_form")
+  strength     String?
+  unit         String?
+  price        Decimal      @db.Decimal(10, 2)
+  stock        Int          @default(0)
+  reorderLevel Int          @default(10) @map("reorder_level")
+  expiryDate   DateTime?    @map("expiry_date")
+  isActive     Boolean      @default(true) @map("is_active")
+  dispensings  Dispensing[]
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@map("medications")
+}
+
+model Dispensing {
+  id             String       @id @default(uuid())
+  prescriptionId String       @map("prescription_id")
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  medicationId   String       @map("medication_id")
+  medication     Medication   @relation(fields: [medicationId], references: [id])
+  quantity       Int
+  pharmacistId   String       @map("pharmacist_id")
+  pharmacist     User         @relation("PharmacistDispensing", fields: [pharmacistId], references: [id])
+  dispensedAt    DateTime     @default(now()) @map("dispensed_at")
+
+  @@map("dispensings")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  PARTIALLY_PAID
+  CANCELLED
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  INSURANCE
+  BANK_TRANSFER
+}
+
+model Invoice {
+  id            String         @id @default(uuid())
+  invoiceNumber String         @unique @map("invoice_number")
+  patientId     String         @map("patient_id")
+  patient       PatientProfile @relation("PatientInvoices", fields: [patientId], references: [id])
+  appointmentId String?        @map("appointment_id")
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  status        InvoiceStatus  @default(DRAFT)
+  subtotal      Decimal        @db.Decimal(10, 2)
+  tax           Decimal        @default(0) @db.Decimal(10, 2)
+  discount      Decimal        @default(0) @db.Decimal(10, 2)
+  total         Decimal        @db.Decimal(10, 2)
+  paidAmount    Decimal        @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  items         InvoiceItem[]
+  payments      Payment[]
+  issuedAt      DateTime?      @map("issued_at")
+  dueDate       DateTime?      @map("due_date")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String  @map("invoice_id")
+  invoice     Invoice @relation(fields: [invoiceId], references: [id])
+  description String
+  category    String // CONSULTATION, LAB_TEST, MEDICATION, PROCEDURE
+  quantity    Int     @default(1)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
+  total       Decimal @db.Decimal(10, 2)
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  invoiceId String        @map("invoice_id")
+  invoice   Invoice       @relation(fields: [invoiceId], references: [id])
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod
+  reference String?
+  paidAt    DateTime      @default(now()) @map("paid_at")
+
+  @@map("payments")
+}
+
+// ─── Phase 5: Advanced Features ─────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  type      String // APPOINTMENT_BOOKED, LAB_RESULTS_READY, PRESCRIPTION_READY, etc.
+  title     String
+  message   String
+  data      String? // JSON payload for linking to relevant entity
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model Setting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+model Holiday {
+  id   String   @id @default(uuid())
+  name String
+  date DateTime
+
+  @@map("holidays")
+}
+
+// ─── Phase 6: Audit ─────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  action    String // CREATE, UPDATE, DELETE
+  entity    String // User, Appointment, etc.
+  entityId  String?  @map("entity_id")
+  changes   String? // JSON diff
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
 }

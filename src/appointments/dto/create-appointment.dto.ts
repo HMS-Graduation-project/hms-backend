@@ -9,12 +9,13 @@ import {
 } from 'class-validator';
 
 export class CreateAppointmentDto {
-  @ApiProperty({
-    description: 'Patient profile UUID',
+  @ApiPropertyOptional({
+    description: 'Patient profile UUID (optional for PATIENT role - auto-resolved)',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
+  @IsOptional()
   @IsUUID()
-  patientId: string;
+  patientId?: string;
 
   @ApiProperty({
     description: 'Doctor profile UUID',

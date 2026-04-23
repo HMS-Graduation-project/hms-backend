@@ -66,8 +66,11 @@ export class AppointmentsController {
     Role.DOCTOR,
   )
   @ApiOperation({ summary: 'Create a new appointment' })
-  async create(@Body() dto: CreateAppointmentDto) {
-    return this.appointmentsService.create(dto);
+  async create(
+    @Body() dto: CreateAppointmentDto,
+    @CurrentUser() currentUser: { id: string; role: string },
+  ) {
+    return this.appointmentsService.create(dto, currentUser);
   }
 
   @Get()
