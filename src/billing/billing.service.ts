@@ -101,7 +101,7 @@ export class BillingService {
     // PATIENT role may only view their own invoices
     if (
       currentUser.role === Role.PATIENT &&
-      invoice.patient.user.id !== currentUser.id
+      invoice.patient.user?.id !== currentUser.id
     ) {
       throw new ForbiddenException(
         'You can only view your own invoices',

@@ -279,12 +279,14 @@ async function main() {
   interface PatientRef {
     userId: string;
     profileId: string;
+    nationalPatientId: string;
     email: string;
   }
 
   const patientRefs: PatientRef[] = [];
 
-  for (const pat of patientData) {
+  for (let i = 0; i < patientData.length; i++) {
+    const pat = patientData[i];
     const user = await upsertUser({
       email: pat.email,
       passwordHash: hash,
@@ -296,11 +298,42 @@ async function main() {
       dateOfBirth: pat.dateOfBirth,
     });
 
+    // Synthetic Syrian National IDs for seed data (11 digits, unique per patient).
+    const syrianNationalId = `990${String(i + 1).padStart(8, '0')}`;
+
+    const nationalPatient = await prisma.nationalPatient.upsert({
+      where: { syrianNationalId },
+      update: {
+        firstName: pat.firstName,
+        lastName: pat.lastName,
+        bloodType: pat.bloodType,
+        allergies: pat.allergies,
+        phone: pat.phone,
+      },
+      create: {
+        syrianNationalId,
+        firstName: pat.firstName,
+        lastName: pat.lastName,
+        dateOfBirth: pat.dateOfBirth,
+        gender: pat.gender,
+        bloodType: pat.bloodType,
+        allergies: pat.allergies,
+        phone: pat.phone,
+        criticalAlerts: pat.allergies ? `Allergy: ${pat.allergies}` : null,
+      },
+    });
+
     const profile = await prisma.patientProfile.upsert({
-      where: { userId: user.id },
-      update: { hospitalId: _demoHospitalId! },
+      where: {
+        hospitalId_nationalPatientId: {
+          hospitalId: _demoHospitalId!,
+          nationalPatientId: nationalPatient.id,
+        },
+      },
+      update: { hospitalId: _demoHospitalId!, userId: user.id },
       create: {
         userId: user.id,
+        nationalPatientId: nationalPatient.id,
         bloodType: pat.bloodType,
         allergies: pat.allergies,
         emergencyContactName: pat.emergencyContactName,
@@ -312,8 +345,13 @@ async function main() {
       },
     });
 
-    patientRefs.push({ userId: user.id, profileId: profile.id, email: pat.email });
-    console.log(`  Seeded patient: ${pat.firstName} ${pat.lastName}`);
+    patientRefs.push({
+      userId: user.id,
+      profileId: profile.id,
+      nationalPatientId: nationalPatient.id,
+      email: pat.email,
+    });
+    console.log(`  Seeded patient: ${pat.firstName} ${pat.lastName} (NHID short: ${nationalPatient.id.slice(0, 8)}, SY-ID: ${syrianNationalId})`);
   }
 
   // ─── 6. Doctor Schedules ─────────────────────────────────────────

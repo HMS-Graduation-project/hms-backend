@@ -91,8 +91,12 @@ export class PrismaService
       }
 
       const existingWhere = (params.args?.where ?? {}) as Record<string, unknown>;
-      if (existingWhere.hospitalId !== undefined) {
-        // Caller set hospitalId explicitly; respect it.
+      const hasHospitalConstraint = Object.keys(existingWhere).some(
+        (k) => k === 'hospitalId' || k.startsWith('hospitalId_'),
+      );
+      if (hasHospitalConstraint) {
+        // Caller already constrains by hospitalId (directly or via a
+        // compound unique key like hospitalId_nationalPatientId).
         return next(params);
       }
 

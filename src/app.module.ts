@@ -25,6 +25,7 @@ import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
 import { HospitalsModule } from './hospitals/hospitals.module';
 import { CitiesModule } from './cities/cities.module';
+import { NationalRegistryModule } from './national-registry/national-registry.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AuditInterceptor, RequestContextInterceptor } from './common/interceptors';
@@ -63,6 +64,7 @@ import { AuditInterceptor, RequestContextInterceptor } from './common/intercepto
     AuditModule,
     HospitalsModule,
     CitiesModule,
+    NationalRegistryModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
