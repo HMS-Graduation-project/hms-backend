@@ -146,7 +146,11 @@ export class AppointmentsService {
 
   // ──────────────────── Create ───────────────────────────────────────────
 
-  async create(dto: CreateAppointmentDto, currentUser?: { id: string; role: string }) {
+  async create(
+    dto: CreateAppointmentDto,
+    hospitalId: string,
+    currentUser?: { id: string; role: string },
+  ) {
     // Validate that doctor exists
     const doctor = await this.prisma.doctorProfile.findUnique({
       where: { id: dto.doctorId },
@@ -249,6 +253,7 @@ export class AppointmentsService {
         endTime: dto.endTime,
         type: dto.type,
         reason: dto.reason,
+        hospitalId,
       },
       include: APPOINTMENT_INCLUDE,
     });

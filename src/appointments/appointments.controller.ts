@@ -18,6 +18,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
@@ -68,9 +69,14 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Create a new appointment' })
   async create(
     @Body() dto: CreateAppointmentDto,
-    @CurrentUser() currentUser: { id: string; role: string },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.appointmentsService.create(dto, currentUser);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.appointmentsService.create(
+      dto,
+      currentUser.hospitalId!,
+      currentUser,
+    );
   }
 
   @Get()

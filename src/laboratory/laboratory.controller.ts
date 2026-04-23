@@ -16,6 +16,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { EnterLabResultDto } from './dto/enter-lab-result.dto';
 import { LabOrderQueryDto } from './dto/lab-order-query.dto';
@@ -31,8 +32,12 @@ export class LaboratoryController {
   @Post('lab-orders')
   @Roles(Role.DOCTOR)
   @ApiOperation({ summary: 'Create a new lab order' })
-  async create(@Body() dto: CreateLabOrderDto) {
-    return this.laboratoryService.create(dto);
+  async create(
+    @Body() dto: CreateLabOrderDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.laboratoryService.create(dto, currentUser.hospitalId!);
   }
 
   @Get('lab-orders')

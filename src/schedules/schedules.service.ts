@@ -26,7 +26,11 @@ export class SchedulesService {
 
   // ──────────────────── Set schedule (upsert) ────────────────────────────
 
-  async setSchedule(doctorId: string, dto: SetScheduleDto) {
+  async setSchedule(
+    doctorId: string,
+    dto: SetScheduleDto,
+    hospitalId: string,
+  ) {
     await this.ensureDoctorExists(doctorId);
 
     return this.prisma.$transaction(async (tx) => {
@@ -41,6 +45,7 @@ export class SchedulesService {
         endTime: entry.endTime,
         slotDuration: entry.slotDuration ?? 30,
         isActive: entry.isActive ?? true,
+        hospitalId,
       }));
 
       await tx.doctorSchedule.createMany({ data: entries });

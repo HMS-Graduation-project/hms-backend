@@ -18,6 +18,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { PrismaService } from '../prisma/prisma.service';
 import { SetScheduleDto } from './dto/set-schedule.dto';
 import { SchedulesService } from './schedules.service';
@@ -42,10 +43,15 @@ export class SchedulesController {
   async setSchedule(
     @Param('doctorId', ParseUUIDPipe) doctorId: string,
     @Body() dto: SetScheduleDto,
-    @CurrentUser() currentUser: { id: string; role: Role },
+    @CurrentUser() currentUser: AuthUser,
   ) {
     await this.ensureSelfOrAdmin(doctorId, currentUser);
-    return this.schedulesService.setSchedule(doctorId, dto);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.schedulesService.setSchedule(
+      doctorId,
+      dto,
+      currentUser.hospitalId!,
+    );
   }
 
   @Get('schedule')
@@ -81,7 +87,7 @@ export class SchedulesController {
    */
   private async ensureSelfOrAdmin(
     doctorId: string,
-    currentUser: { id: string; role: Role },
+    currentUser: AuthUser,
   ): Promise<void> {
     const isAdmin =
       currentUser.role === Role.ADMIN ||

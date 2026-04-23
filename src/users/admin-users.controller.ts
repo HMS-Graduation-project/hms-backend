@@ -15,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserQueryDto } from './dto/user-query.dto';
@@ -31,24 +33,32 @@ export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'List all users (paginated)' })
-  async findAll(@Query() query: UserQueryDto) {
-    return this.usersService.findAll(query);
+  async findAll(
+    @Query() query: UserQueryDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.usersService.findAll(query, currentUser.hospitalId);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get a user by ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.findByIdSafe(id);
   }
 
   @Post()
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new user' })
-  async create(@Body() dto: CreateUserDto) {
-    return this.usersService.createByAdmin(dto);
+  async create(
+    @Body() dto: CreateUserDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // New users inherit the creating admin's hospital scope. SUPER_ADMIN with
+    // hospitalId=null creates a national-scope user.
+    return this.usersService.createByAdmin(dto, currentUser.hospitalId);
   }
 
   @Patch(':id')

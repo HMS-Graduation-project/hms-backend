@@ -12,6 +12,10 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 const prisma = new PrismaClient();
 
+// Set inside main() after the demo hospital is upserted. upsertUser() reads it
+// so every seeded non-super user is automatically scoped to the demo hospital.
+let _demoHospitalId: string | null = null;
+
 // ─── Date Helpers ──────────────────────────────────────────────────
 const today = new Date();
 today.setHours(0, 0, 0, 0);
@@ -52,8 +56,9 @@ async function upsertUser(
       role: data.role,
       firstName: data.firstName,
       lastName: data.lastName,
+      hospitalId: _demoHospitalId,
     },
-    create: data,
+    create: { ...data, hospitalId: _demoHospitalId },
   });
 }
 
@@ -68,6 +73,28 @@ async function main() {
     process.env.ADMIN_PASSWORD || 'superadmin123',
     10,
   );
+
+  // ─── 0. Default City + Hospital (multi-tenancy foundation) ───────
+  const demoCity = await prisma.city.upsert({
+    where: { name: 'Damascus' },
+    update: {},
+    create: { name: 'Damascus', nameAr: 'دمشق', country: 'SY' },
+  });
+
+  const demoHospital = await prisma.hospital.upsert({
+    where: { code: 'DAM-GEN-01' },
+    update: { cityId: demoCity.id },
+    create: {
+      code: 'DAM-GEN-01',
+      name: 'Damascus General Hospital',
+      nameAr: 'مستشفى دمشق العام',
+      cityId: demoCity.id,
+      address: 'Mazzeh Highway, Damascus',
+      phone: '+963-11-6666-000',
+    },
+  });
+  _demoHospitalId = demoHospital.id;
+  console.log(`  Seeded city: ${demoCity.name}, hospital: ${demoHospital.name} [${demoHospital.code}]`);
 
   // ─── 1. Super Admin ──────────────────────────────────────────────
   const superAdmin = await prisma.user.upsert({
@@ -95,9 +122,9 @@ async function main() {
   const deptRecords: Record<string, { id: string; name: string }> = {};
   for (const dept of departmentData) {
     const record = await prisma.department.upsert({
-      where: { name: dept.name },
+      where: { hospitalId_name: { hospitalId: _demoHospitalId!, name: dept.name } },
       update: {},
-      create: dept,
+      create: { ...dept, hospitalId: _demoHospitalId! },
     });
     deptRecords[dept.name] = record;
     console.log(`  Seeded department: ${record.name}`);
@@ -199,6 +226,7 @@ async function main() {
       update: {
         specialization: doc.specialization,
         departmentId: deptId,
+        hospitalId: _demoHospitalId!,
       },
       create: {
         userId: user.id,
@@ -208,6 +236,7 @@ async function main() {
         bio: doc.bio,
         yearsExperience: doc.yearsExperience,
         consultationFee: doc.consultationFee,
+        hospitalId: _demoHospitalId!,
       },
     });
 
@@ -269,7 +298,7 @@ async function main() {
 
     const profile = await prisma.patientProfile.upsert({
       where: { userId: user.id },
-      update: {},
+      update: { hospitalId: _demoHospitalId! },
       create: {
         userId: user.id,
         bloodType: pat.bloodType,
@@ -279,6 +308,7 @@ async function main() {
         emergencyContactRelation: pat.emergencyContactRelation,
         insuranceProvider: pat.insuranceProvider,
         insurancePolicyNumber: pat.insurancePolicyNumber,
+        hospitalId: _demoHospitalId!,
       },
     });
 
@@ -324,13 +354,14 @@ async function main() {
             dayOfWeek: day,
           },
         },
-        update: { startTime, endTime, slotDuration },
+        update: { startTime, endTime, slotDuration, hospitalId: _demoHospitalId! },
         create: {
           doctorId: doc.profileId,
           dayOfWeek: day,
           startTime,
           endTime,
           slotDuration,
+          hospitalId: _demoHospitalId!,
         },
       });
     }
@@ -469,6 +500,7 @@ async function main() {
           patientId: patRef.profileId,
           doctorId: docRef.profileId,
           departmentId: docRef.departmentId,
+          hospitalId: _demoHospitalId!,
           date: apptDate,
           startTime: `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`,
           endTime: `${String(endHour).padStart(2, '0')}:${String(endMinFinal).padStart(2, '0')}`,
@@ -558,6 +590,7 @@ async function main() {
           appointmentId: appt.id,
           patientId: appt.patientId,
           doctorId: appt.doctorId,
+          hospitalId: _demoHospitalId!,
           chiefComplaint: data.chiefComplaint,
           presentIllness: data.presentIllness,
           examination: data.examination,
@@ -732,6 +765,7 @@ async function main() {
           medicalRecordId: mr.id,
           patientId: mr.patientId,
           doctorId: mr.doctorId,
+          hospitalId: _demoHospitalId!,
           status: config.status,
           notes: config.notes,
           items: {
@@ -797,6 +831,7 @@ async function main() {
           medicalRecordId: mr.id,
           patientId: mr.patientId,
           doctorId: mr.doctorId,
+          hospitalId: _demoHospitalId!,
           testName: config.testName,
           testCategory: config.testCategory,
           status: config.status,
@@ -847,9 +882,11 @@ async function main() {
 
   for (const med of medicationData) {
     // Use name as a pseudo-unique key (no unique constraint in schema, so find first)
-    const existing = await prisma.medication.findFirst({ where: { name: med.name } });
+    const existing = await prisma.medication.findFirst({
+      where: { name: med.name, hospitalId: _demoHospitalId! },
+    });
     if (!existing) {
-      await prisma.medication.create({ data: med });
+      await prisma.medication.create({ data: { ...med, hospitalId: _demoHospitalId! } });
     }
   }
   console.log('    Seeded 15 medications');
@@ -984,6 +1021,7 @@ async function main() {
           invoiceNumber,
           patientId: patRef.profileId,
           appointmentId: appt?.id ?? null,
+          hospitalId: _demoHospitalId!,
           status: config.status,
           subtotal,
           tax,
@@ -1050,9 +1088,9 @@ async function main() {
 
   for (const s of settings) {
     await prisma.setting.upsert({
-      where: { key: s.key },
+      where: { hospitalId_key: { hospitalId: _demoHospitalId!, key: s.key } },
       update: { value: s.value },
-      create: s,
+      create: { ...s, hospitalId: _demoHospitalId! },
     });
   }
   console.log('    Hospital settings configured');
@@ -1107,7 +1145,9 @@ async function main() {
     ];
 
     for (const notif of notificationData) {
-      await prisma.notification.create({ data: notif });
+      await prisma.notification.create({
+        data: { ...notif, hospitalId: _demoHospitalId! },
+      });
     }
     console.log('    Created 14 sample notifications');
   } else {
@@ -1130,7 +1170,9 @@ async function main() {
     ];
 
     for (const log of auditData) {
-      await prisma.auditLog.create({ data: log });
+      await prisma.auditLog.create({
+        data: { ...log, hospitalId: _demoHospitalId! },
+      });
     }
     console.log('    Created 7 audit log entries');
   } else {

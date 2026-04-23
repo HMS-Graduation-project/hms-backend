@@ -16,6 +16,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { UpdatePrescriptionStatusDto } from './dto/update-prescription-status.dto';
 import { PrescriptionQueryDto } from './dto/prescription-query.dto';
@@ -32,9 +33,14 @@ export class PrescriptionsController {
   @ApiOperation({ summary: 'Create a prescription for a medical record' })
   async create(
     @Body() dto: CreatePrescriptionDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.prescriptionsService.create(dto, user.id);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.prescriptionsService.create(
+      dto,
+      currentUser.id,
+      currentUser.hospitalId!,
+    );
   }
 
   @Get('prescriptions/:id')

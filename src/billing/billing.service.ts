@@ -113,7 +113,7 @@ export class BillingService {
 
   // ───────────────────── Create ──────────────────────────────────────────────
 
-  async create(dto: CreateInvoiceDto) {
+  async create(dto: CreateInvoiceDto, hospitalId: string) {
     // Validate patient exists
     const patient = await this.prisma.patientProfile.findUnique({
       where: { id: dto.patientId },
@@ -146,7 +146,7 @@ export class BillingService {
       }
     }
 
-    const invoiceNumber = await this.generateInvoiceNumber();
+    const invoiceNumber = await this.generateInvoiceNumber(hospitalId);
     const tax = new Prisma.Decimal(dto.tax ?? 0);
     const discount = new Prisma.Decimal(dto.discount ?? 0);
 
@@ -170,6 +170,7 @@ export class BillingService {
           discount,
           total,
           paidAmount: 0,
+          hospitalId,
           items: {
             create: dto.items.map((item) => ({
               description: item.description,
@@ -352,9 +353,10 @@ export class BillingService {
 
   /**
    * Generates the next invoice number for today in format INV-YYYYMMDD-XXXX.
-   * Uses a count of today's existing invoices + 1, zero-padded to 4 digits.
+   * Uses a count of today's existing invoices + 1 (scoped to hospital),
+   * zero-padded to 4 digits. invoiceNumber is unique per-hospital.
    */
-  private async generateInvoiceNumber(): Promise<string> {
+  private async generateInvoiceNumber(hospitalId: string): Promise<string> {
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -367,6 +369,7 @@ export class BillingService {
 
     const count = await this.prisma.invoice.count({
       where: {
+        hospitalId,
         createdAt: {
           gte: todayStart,
           lt: todayEnd,

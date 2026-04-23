@@ -16,6 +16,8 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { SettingsService } from './settings.service';
 import { UpdateSettingDto } from './dto/update-setting.dto';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
@@ -36,10 +38,11 @@ export class SettingsController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Get all settings as key-value map',
-    description: 'Returns every setting in the system as a flat JSON object.',
+    description:
+      'Returns every setting in the caller hospital scope (or global when the caller has no hospital) as a flat JSON object.',
   })
-  async getAll() {
-    return this.settingsService.getAll();
+  async getAll(@CurrentUser() currentUser: AuthUser) {
+    return this.settingsService.getAll(currentUser.hospitalId);
   }
 
   // ──────────────────── Upsert Setting ───────────────────────────────────────
@@ -49,10 +52,13 @@ export class SettingsController {
   @ApiOperation({
     summary: 'Create or update a setting',
     description:
-      'Upserts a setting by key. If the key exists its value is updated; otherwise a new entry is created.',
+      'Upserts a setting by key scoped to the caller hospital (or globally when the caller has no hospital).',
   })
-  async set(@Body() dto: UpdateSettingDto) {
-    return this.settingsService.set(dto.key, dto.value);
+  async set(
+    @Body() dto: UpdateSettingDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.settingsService.set(dto.key, dto.value, currentUser.hospitalId);
   }
 
   // ──────────────────── List Holidays ────────────────────────────────────────
@@ -61,10 +67,11 @@ export class SettingsController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'List all holidays',
-    description: 'Returns all holidays ordered by date ascending.',
+    description:
+      'Returns all holidays (scoped to the caller hospital, or global) ordered by date ascending.',
   })
-  async getHolidays() {
-    return this.settingsService.getHolidays();
+  async getHolidays(@CurrentUser() currentUser: AuthUser) {
+    return this.settingsService.getHolidays(currentUser.hospitalId);
   }
 
   // ──────────────────── Create Holiday ───────────────────────────────────────
@@ -73,10 +80,14 @@ export class SettingsController {
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Create a new holiday',
-    description: 'Adds a named date to the holidays calendar.',
+    description:
+      'Adds a named date to the holidays calendar (scoped to the caller hospital, or global).',
   })
-  async createHoliday(@Body() dto: CreateHolidayDto) {
-    return this.settingsService.createHoliday(dto);
+  async createHoliday(
+    @Body() dto: CreateHolidayDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    return this.settingsService.createHoliday(dto, currentUser.hospitalId);
   }
 
   // ──────────────────── Delete Holiday ───────────────────────────────────────

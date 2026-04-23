@@ -16,6 +16,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
 import { DispenseDto } from './dto/dispense.dto';
@@ -33,8 +34,15 @@ export class PharmacyController {
   @Post('medications')
   @Roles(Role.PHARMACIST, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new medication' })
-  async createMedication(@Body() dto: CreateMedicationDto) {
-    return this.pharmacyService.createMedication(dto);
+  async createMedication(
+    @Body() dto: CreateMedicationDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.pharmacyService.createMedication(
+      dto,
+      currentUser.hospitalId!,
+    );
   }
 
   @Get('medications')
@@ -76,8 +84,13 @@ export class PharmacyController {
   @ApiOperation({ summary: 'Dispense medication against a prescription' })
   async dispense(
     @Body() dto: DispenseDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.pharmacyService.dispense(dto, user.id);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.pharmacyService.dispense(
+      dto,
+      currentUser.id,
+      currentUser.hospitalId!,
+    );
   }
 }

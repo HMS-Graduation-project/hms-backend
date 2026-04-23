@@ -76,7 +76,7 @@ export class PatientsService {
 
   // ───────────────────── Create ──────────────────────────────────────────
 
-  async create(dto: CreatePatientDto) {
+  async create(dto: CreatePatientDto, hospitalId: string) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -99,6 +99,7 @@ export class PatientsService {
           gender: dto.gender,
           dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
           address: dto.address,
+          hospitalId,
         },
       });
 
@@ -112,6 +113,7 @@ export class PatientsService {
           emergencyContactRelation: dto.emergencyContactRelation,
           insuranceProvider: dto.insuranceProvider,
           insurancePolicyNumber: dto.insurancePolicyNumber,
+          hospitalId,
         },
         include: { user: { select: USER_SELECT } },
       });

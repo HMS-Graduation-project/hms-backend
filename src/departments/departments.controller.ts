@@ -17,6 +17,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { DepartmentQueryDto } from './dto/department-query.dto';
@@ -36,18 +37,27 @@ export class DepartmentsController {
   @Post()
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new department' })
-  async create(@Body() dto: CreateDepartmentDto) {
-    return this.departmentsService.create(dto);
+  async create(
+    @Body() dto: CreateDepartmentDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.departmentsService.create(dto, currentUser.hospitalId!);
   }
 
   @Get()
   @ApiOperation({ summary: 'List departments (paginated)' })
   async findAll(
     @Query() query: DepartmentQueryDto,
-    @CurrentUser() user: { role: Role },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    const isAdmin = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN;
-    return this.departmentsService.findAll(query, isAdmin);
+    const isAdmin =
+      currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN;
+    return this.departmentsService.findAll(
+      query,
+      isAdmin,
+      currentUser.hospitalId,
+    );
   }
 
   @Get(':id')
@@ -62,8 +72,10 @@ export class DepartmentsController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDepartmentDto,
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.departmentsService.update(id, dto);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.departmentsService.update(id, dto, currentUser.hospitalId!);
   }
 
   @Delete(':id')

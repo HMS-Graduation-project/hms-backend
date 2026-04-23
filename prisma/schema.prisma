@@ -11,6 +11,7 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   ADMIN
+  HOSPITAL_ADMIN
   DOCTOR
   NURSE
   RECEPTIONIST
@@ -32,6 +33,8 @@ model User {
   dateOfBirth    DateTime?       @map("date_of_birth")
   address        String?
   isActive       Boolean         @default(true) @map("is_active")
+  hospitalId     String?         @map("hospital_id") // null for SUPER_ADMIN and future national/regional roles
+  hospital       Hospital?       @relation(fields: [hospitalId], references: [id])
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
@@ -42,23 +45,28 @@ model User {
   dispensings      Dispensing[]    @relation("PharmacistDispensing")
   notifications    Notification[]
 
+  @@index([hospitalId])
   @@map("users")
 }
 
 model Department {
   id           String          @id @default(uuid())
-  name         String          @unique
+  name         String
   description  String?
   floor        String?
   phone        String?
   isActive     Boolean         @default(true) @map("is_active")
   headDoctorId String?         @unique @map("head_doctor_id")
   headDoctor   User?           @relation("DepartmentHead", fields: [headDoctorId], references: [id])
+  hospitalId   String          @map("hospital_id")
+  hospital     Hospital        @relation(fields: [hospitalId], references: [id])
   doctors      DoctorProfile[] @relation("DepartmentDoctors")
   appointments Appointment[]
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
+  @@unique([hospitalId, name])
+  @@index([hospitalId])
   @@map("departments")
 }
 
@@ -74,6 +82,8 @@ model DoctorProfile {
   yearsExperience Int?             @map("years_experience")
   consultationFee Decimal?         @map("consultation_fee") @db.Decimal(10, 2)
   isAvailable     Boolean          @default(true) @map("is_available")
+  hospitalId      String           @map("hospital_id")
+  hospital        Hospital         @relation(fields: [hospitalId], references: [id])
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
@@ -83,6 +93,7 @@ model DoctorProfile {
   prescriptions   Prescription[]   @relation("DoctorPrescriptions")
   labOrders       LabOrder[]       @relation("DoctorLabOrders")
 
+  @@index([hospitalId])
   @@map("doctor_profiles")
 }
 
@@ -98,6 +109,8 @@ model PatientProfile {
   insuranceProvider        String?         @map("insurance_provider")
   insurancePolicyNumber    String?         @map("insurance_policy_number")
   medicalNotes             String?         @map("medical_notes")
+  hospitalId               String          @map("hospital_id")
+  hospital                 Hospital        @relation(fields: [hospitalId], references: [id])
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
 
@@ -107,6 +120,7 @@ model PatientProfile {
   labOrders                LabOrder[]      @relation("PatientLabOrders")
   invoices                 Invoice[]       @relation("PatientInvoices")
 
+  @@index([hospitalId])
   @@map("patient_profiles")
 }
 
@@ -121,10 +135,13 @@ model DoctorSchedule {
   endTime      String        @map("end_time") // "17:00"
   slotDuration Int           @default(30) @map("slot_duration") // minutes
   isActive     Boolean       @default(true) @map("is_active")
+  hospitalId   String        @map("hospital_id")
+  hospital     Hospital      @relation(fields: [hospitalId], references: [id])
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
   @@unique([doctorId, dayOfWeek])
+  @@index([hospitalId])
   @@map("doctor_schedules")
 }
 
@@ -145,6 +162,8 @@ model Appointment {
   doctor        DoctorProfile     @relation("DoctorAppointments", fields: [doctorId], references: [id])
   departmentId  String?           @map("department_id")
   department    Department?       @relation(fields: [departmentId], references: [id])
+  hospitalId    String            @map("hospital_id")
+  hospital      Hospital          @relation(fields: [hospitalId], references: [id])
   date          DateTime
   startTime     String            @map("start_time")
   endTime       String            @map("end_time")
@@ -158,6 +177,7 @@ model Appointment {
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
+  @@index([hospitalId])
   @@map("appointments")
 }
 
@@ -169,6 +189,8 @@ model MedicalRecord {
   patient        PatientProfile @relation("PatientRecords", fields: [patientId], references: [id])
   doctorId       String         @map("doctor_id")
   doctor         DoctorProfile  @relation("DoctorRecords", fields: [doctorId], references: [id])
+  hospitalId     String         @map("hospital_id")
+  hospital       Hospital       @relation(fields: [hospitalId], references: [id])
   chiefComplaint String?        @map("chief_complaint")
   presentIllness String?        @map("present_illness")
   examination    String?
@@ -182,6 +204,7 @@ model MedicalRecord {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
+  @@index([hospitalId])
   @@map("medical_records")
 }
 
@@ -217,6 +240,8 @@ model Prescription {
   patient         PatientProfile     @relation("PatientPrescriptions", fields: [patientId], references: [id])
   doctorId        String             @map("doctor_id")
   doctor          DoctorProfile      @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+  hospitalId      String             @map("hospital_id")
+  hospital        Hospital           @relation(fields: [hospitalId], references: [id])
   status          PrescriptionStatus @default(PENDING)
   notes           String?
   items           PrescriptionItem[]
@@ -224,6 +249,7 @@ model Prescription {
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
+  @@index([hospitalId])
   @@map("prescriptions")
 }
 
@@ -259,6 +285,8 @@ model LabOrder {
   patient         PatientProfile  @relation("PatientLabOrders", fields: [patientId], references: [id])
   doctorId        String          @map("doctor_id")
   doctor          DoctorProfile   @relation("DoctorLabOrders", fields: [doctorId], references: [id])
+  hospitalId      String          @map("hospital_id")
+  hospital        Hospital        @relation(fields: [hospitalId], references: [id])
   testName        String          @map("test_name")
   testCategory    String?         @map("test_category")
   status          LabOrderStatus  @default(ORDERED)
@@ -268,6 +296,7 @@ model LabOrder {
   orderedAt       DateTime        @default(now()) @map("ordered_at")
   completedAt     DateTime?       @map("completed_at")
 
+  @@index([hospitalId])
   @@map("lab_orders")
 }
 
@@ -301,10 +330,13 @@ model Medication {
   reorderLevel Int          @default(10) @map("reorder_level")
   expiryDate   DateTime?    @map("expiry_date")
   isActive     Boolean      @default(true) @map("is_active")
+  hospitalId   String       @map("hospital_id")
+  hospital     Hospital     @relation(fields: [hospitalId], references: [id])
   dispensings  Dispensing[]
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
+  @@index([hospitalId])
   @@map("medications")
 }
 
@@ -317,8 +349,11 @@ model Dispensing {
   quantity       Int
   pharmacistId   String       @map("pharmacist_id")
   pharmacist     User         @relation("PharmacistDispensing", fields: [pharmacistId], references: [id])
+  hospitalId     String       @map("hospital_id")
+  hospital       Hospital     @relation(fields: [hospitalId], references: [id])
   dispensedAt    DateTime     @default(now()) @map("dispensed_at")
 
+  @@index([hospitalId])
   @@map("dispensings")
 }
 
@@ -340,11 +375,13 @@ enum PaymentMethod {
 
 model Invoice {
   id            String         @id @default(uuid())
-  invoiceNumber String         @unique @map("invoice_number")
+  invoiceNumber String         @map("invoice_number")
   patientId     String         @map("patient_id")
   patient       PatientProfile @relation("PatientInvoices", fields: [patientId], references: [id])
   appointmentId String?        @map("appointment_id")
   appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  hospitalId    String         @map("hospital_id")
+  hospital      Hospital       @relation(fields: [hospitalId], references: [id])
   status        InvoiceStatus  @default(DRAFT)
   subtotal      Decimal        @db.Decimal(10, 2)
   tax           Decimal        @default(0) @db.Decimal(10, 2)
@@ -358,6 +395,8 @@ model Invoice {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
+  @@unique([hospitalId, invoiceNumber])
+  @@index([hospitalId])
   @@map("invoices")
 }
 
@@ -389,46 +428,107 @@ model Payment {
 // ─── Phase 5: Advanced Features ─────────────────────────────────
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id])
-  type      String // APPOINTMENT_BOOKED, LAB_RESULTS_READY, PRESCRIPTION_READY, etc.
-  title     String
-  message   String
-  data      String? // JSON payload for linking to relevant entity
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id])
+  hospitalId String?   @map("hospital_id") // null = national / cross-hospital notification
+  hospital   Hospital? @relation(fields: [hospitalId], references: [id])
+  type       String // APPOINTMENT_BOOKED, LAB_RESULTS_READY, PRESCRIPTION_READY, etc.
+  title      String
+  message    String
+  data       String? // JSON payload for linking to relevant entity
+  isRead     Boolean   @default(false) @map("is_read")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
+  @@index([hospitalId])
   @@map("notifications")
 }
 
 model Setting {
-  id    String @id @default(uuid())
-  key   String @unique
-  value String
+  id         String    @id @default(uuid())
+  key        String
+  value      String
+  hospitalId String?   @map("hospital_id") // null = global setting
+  hospital   Hospital? @relation(fields: [hospitalId], references: [id])
 
+  @@unique([hospitalId, key])
+  @@index([hospitalId])
   @@map("settings")
 }
 
 model Holiday {
-  id   String   @id @default(uuid())
-  name String
-  date DateTime
+  id         String    @id @default(uuid())
+  name       String
+  date       DateTime
+  hospitalId String?   @map("hospital_id") // null = national holiday
+  hospital   Hospital? @relation(fields: [hospitalId], references: [id])
 
+  @@index([hospitalId])
   @@map("holidays")
 }
 
 // ─── Phase 6: Audit ─────────────────────────────────────────────
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?  @map("user_id")
-  action    String // CREATE, UPDATE, DELETE
-  entity    String // User, Appointment, etc.
-  entityId  String?  @map("entity_id")
-  changes   String? // JSON diff
-  ipAddress String?  @map("ip_address")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String    @id @default(uuid())
+  userId     String?   @map("user_id")
+  hospitalId String?   @map("hospital_id") // null = national-scoped action
+  hospital   Hospital? @relation(fields: [hospitalId], references: [id])
+  action     String // CREATE, UPDATE, DELETE
+  entity     String // User, Appointment, etc.
+  entityId   String?   @map("entity_id")
+  changes    String? // JSON diff
+  ipAddress  String?   @map("ip_address")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
+  @@index([hospitalId])
   @@map("audit_logs")
+}
+
+// ─── Phase 1: Multi-Tenancy Foundation ──────────────────────────
+
+model City {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  nameAr    String?    @map("name_ar")
+  country   String     @default("SY")
+  hospitals Hospital[]
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@map("cities")
+}
+
+model Hospital {
+  id        String   @id @default(uuid())
+  code      String   @unique // e.g., "DAM-GEN-01"
+  name      String
+  nameAr    String?  @map("name_ar")
+  cityId    String   @map("city_id")
+  city      City     @relation(fields: [cityId], references: [id])
+  address   String?
+  phone     String?
+  logoUrl   String?  @map("logo_url")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  departments      Department[]
+  doctorProfiles   DoctorProfile[]
+  patientProfiles  PatientProfile[]
+  doctorSchedules  DoctorSchedule[]
+  appointments     Appointment[]
+  medicalRecords   MedicalRecord[]
+  prescriptions    Prescription[]
+  medications      Medication[]
+  dispensings      Dispensing[]
+  labOrders        LabOrder[]
+  invoices         Invoice[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  holidays         Holiday[]
+  settings         Setting[]
+
+  @@index([cityId])
+  @@map("hospitals")
 }

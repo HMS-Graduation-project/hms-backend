@@ -24,6 +24,7 @@ const USER_SELECT = {
   gender: true,
   dateOfBirth: true,
   address: true,
+  hospitalId: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -73,9 +74,15 @@ export class UsersService {
 
   /**
    * Paginated list of users with optional search and role filter.
+   * When `hospitalId` is provided (hospital-scoped admin), scopes the query to
+   * that hospital. SUPER_ADMIN passes null → unscoped (all hospitals).
    */
-  async findAll(query: UserQueryDto) {
+  async findAll(query: UserQueryDto, hospitalId: string | null) {
     const where: Record<string, unknown> = {};
+
+    if (hospitalId) {
+      where.hospitalId = hospitalId;
+    }
 
     if (query.role) {
       where.role = query.role;
@@ -98,8 +105,10 @@ export class UsersService {
 
   /**
    * Create a user from the admin panel. Hashes the password internally.
+   * `hospitalId` is the scope of the creating admin; SUPER_ADMIN may pass null
+   * to create a national user (or another SUPER_ADMIN).
    */
-  async createByAdmin(dto: CreateUserDto): Promise<SafeUser> {
+  async createByAdmin(dto: CreateUserDto, hospitalId: string | null): Promise<SafeUser> {
     const existing = await this.findByEmail(dto.email);
     if (existing) {
       throw new ConflictException('Email already registered');
@@ -115,6 +124,7 @@ export class UsersService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
+        hospitalId,
       },
       select: USER_SELECT,
     });

@@ -89,7 +89,7 @@ export class DoctorsService {
 
   // ──────────────────── Create ──────────────────────────────────────────
 
-  async create(dto: CreateDoctorDto) {
+  async create(dto: CreateDoctorDto, hospitalId: string) {
     // Guard: email must be unique
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -117,6 +117,7 @@ export class DoctorsService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           phone: dto.phone,
+          hospitalId,
         },
       });
 
@@ -129,6 +130,7 @@ export class DoctorsService {
           bio: dto.bio,
           yearsExperience: dto.yearsExperience,
           consultationFee: dto.consultationFee,
+          hospitalId,
         },
         include: DEFAULT_INCLUDE,
       });

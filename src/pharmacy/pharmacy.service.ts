@@ -128,7 +128,7 @@ export class PharmacyService {
 
   // ───────────────────── Create Medication ───────────────────────────────────
 
-  async createMedication(dto: CreateMedicationDto) {
+  async createMedication(dto: CreateMedicationDto, hospitalId: string) {
     return this.prisma.medication.create({
       data: {
         name: dto.name,
@@ -142,6 +142,7 @@ export class PharmacyService {
         stock: dto.stock ?? 0,
         reorderLevel: dto.reorderLevel ?? 10,
         expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
+        hospitalId,
       },
     });
   }
@@ -178,7 +179,7 @@ export class PharmacyService {
 
   // ───────────────────── Dispense ────────────────────────────────────────────
 
-  async dispense(dto: DispenseDto, currentUserId: string) {
+  async dispense(dto: DispenseDto, currentUserId: string, hospitalId: string) {
     return this.prisma.$transaction(async (tx) => {
       // 1. Validate medication exists and has enough stock
       const medication = await tx.medication.findUnique({
@@ -241,6 +242,7 @@ export class PharmacyService {
           medicationId: dto.medicationId,
           quantity: dto.quantity,
           pharmacistId: currentUserId,
+          hospitalId,
         },
         include: {
           medication: true,

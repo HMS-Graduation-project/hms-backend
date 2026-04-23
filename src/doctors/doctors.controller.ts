@@ -16,6 +16,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateDoctorDto } from './dto/create-doctor.dto';
 import { UpdateDoctorDto } from './dto/update-doctor.dto';
 import { DoctorQueryDto } from './dto/doctor-query.dto';
@@ -34,8 +35,12 @@ export class DoctorsController {
   @Post()
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create a new doctor (user + profile)' })
-  async create(@Body() dto: CreateDoctorDto) {
-    return this.doctorsService.create(dto);
+  async create(
+    @Body() dto: CreateDoctorDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.doctorsService.create(dto, currentUser.hospitalId!);
   }
 
   @Get()

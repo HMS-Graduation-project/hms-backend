@@ -25,7 +25,11 @@ export class PrescriptionsService {
 
   // ───────────────────── Create ────────────────────────────────────────────
 
-  async create(dto: CreatePrescriptionDto, currentUserId: string) {
+  async create(
+    dto: CreatePrescriptionDto,
+    currentUserId: string,
+    hospitalId: string,
+  ) {
     const medicalRecord = await this.prisma.medicalRecord.findUnique({
       where: { id: dto.medicalRecordId },
       select: {
@@ -62,6 +66,7 @@ export class PrescriptionsService {
           patientId: medicalRecord.patientId,
           doctorId: medicalRecord.doctorId,
           notes: dto.notes,
+          hospitalId,
           items: {
             create: dto.items.map((item) => ({
               medicationName: item.medicationName,

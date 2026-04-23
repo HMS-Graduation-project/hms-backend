@@ -16,6 +16,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { CreateMedicalRecordDto } from './dto/create-medical-record.dto';
 import { UpdateMedicalRecordDto } from './dto/update-medical-record.dto';
@@ -40,9 +41,14 @@ export class MedicalRecordsController {
   @ApiOperation({ summary: 'Create a medical record for a completed/in-progress appointment' })
   async create(
     @Body() dto: CreateMedicalRecordDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.medicalRecordsService.create(dto, user.id);
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.medicalRecordsService.create(
+      dto,
+      currentUser.id,
+      currentUser.hospitalId!,
+    );
   }
 
   @Get('medical-records/:id')

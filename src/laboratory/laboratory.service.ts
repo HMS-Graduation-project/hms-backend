@@ -99,7 +99,7 @@ export class LaboratoryService {
 
   // ───────────────────── Create ──────────────────────────────────────────────
 
-  async create(dto: CreateLabOrderDto) {
+  async create(dto: CreateLabOrderDto, hospitalId: string) {
     // Validate patient exists
     const patient = await this.prisma.patientProfile.findUnique({
       where: { id: dto.patientId },
@@ -147,6 +147,7 @@ export class LaboratoryService {
         testCategory: dto.testCategory,
         priority: dto.priority ?? 'NORMAL',
         notes: dto.notes,
+        hospitalId,
       },
       include: LAB_ORDER_INCLUDE,
     });

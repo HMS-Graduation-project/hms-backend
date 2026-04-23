@@ -28,7 +28,11 @@ export class MedicalRecordsService {
 
   // ───────────────────── Create ────────────────────────────────────────────
 
-  async create(dto: CreateMedicalRecordDto, currentUserId: string) {
+  async create(
+    dto: CreateMedicalRecordDto,
+    currentUserId: string,
+    hospitalId: string,
+  ) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: dto.appointmentId },
       include: {
@@ -86,6 +90,7 @@ export class MedicalRecordsService {
         icdCodes: dto.icdCodes,
         treatmentPlan: dto.treatmentPlan,
         notes: dto.notes,
+        hospitalId,
       },
       include: {
         appointment: true,

@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -10,6 +11,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -24,7 +26,12 @@ export class AuthService {
       passwordHash,
     });
 
-    const token = this.generateToken(user.id, user.email, user.role);
+    const token = await this.generateToken(
+      user.id,
+      user.email,
+      user.role,
+      user.hospitalId ?? null,
+    );
     return {
       accessToken: token,
       user: {
@@ -33,6 +40,7 @@ export class AuthService {
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
+        hospitalId: user.hospitalId ?? null,
       },
     };
   }
@@ -48,7 +56,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const token = this.generateToken(user.id, user.email, user.role);
+    const token = await this.generateToken(
+      user.id,
+      user.email,
+      user.role,
+      user.hospitalId ?? null,
+    );
     return {
       accessToken: token,
       user: {
@@ -57,11 +70,34 @@ export class AuthService {
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
+        hospitalId: user.hospitalId ?? null,
       },
     };
   }
 
-  private generateToken(userId: string, email: string, role: string): string {
-    return this.jwtService.sign({ sub: userId, email, role });
+  // cityId is resolved from the user's hospital at token time. REGIONAL_ADMIN
+  // / MINISTRY_ADMIN roles don't exist until Phase 2, so cityId is always null
+  // in Phase 1 unless manually attached via hospital.cityId for city-bound roles.
+  private async generateToken(
+    userId: string,
+    email: string,
+    role: string,
+    hospitalId: string | null,
+  ): Promise<string> {
+    let cityId: string | null = null;
+    if (hospitalId) {
+      const hospital = await this.prisma.hospital.findUnique({
+        where: { id: hospitalId },
+        select: { cityId: true },
+      });
+      cityId = hospital?.cityId ?? null;
+    }
+    return this.jwtService.sign({
+      sub: userId,
+      email,
+      role,
+      hospitalId,
+      cityId,
+    });
   }
 }

@@ -15,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { PatientQueryDto } from './dto/patient-query.dto';
@@ -29,8 +31,12 @@ export class PatientsController {
   @Post()
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.RECEPTIONIST)
   @ApiOperation({ summary: 'Register a new patient' })
-  async create(@Body() dto: CreatePatientDto) {
-    return this.patientsService.create(dto);
+  async create(
+    @Body() dto: CreatePatientDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.patientsService.create(dto, currentUser.hospitalId!);
   }
 
   @Get()

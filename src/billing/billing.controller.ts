@@ -17,6 +17,7 @@ import {
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { AddInvoiceItemDto } from './dto/add-invoice-item.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
@@ -38,8 +39,12 @@ export class BillingController {
   @Post('invoices')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.RECEPTIONIST)
   @ApiOperation({ summary: 'Create a new invoice with line items' })
-  async create(@Body() dto: CreateInvoiceDto) {
-    return this.billingService.create(dto);
+  async create(
+    @Body() dto: CreateInvoiceDto,
+    @CurrentUser() currentUser: AuthUser,
+  ) {
+    // TODO P2: proper guard — SUPER_ADMIN may need to target a specific hospital
+    return this.billingService.create(dto, currentUser.hospitalId!);
   }
 
   // ──────────────────── List Invoices ──────────────────────────────────────
@@ -61,9 +66,12 @@ export class BillingController {
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() currentUser: { id: string; role: Role },
+    @CurrentUser() currentUser: AuthUser,
   ) {
-    return this.billingService.findById(id, currentUser);
+    return this.billingService.findById(id, {
+      id: currentUser.id,
+      role: currentUser.role as Role,
+    });
   }
 
   // ──────────────────── Add Item to Invoice ────────────────────────────────

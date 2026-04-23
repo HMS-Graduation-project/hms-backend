@@ -21,12 +21,21 @@ export class DepartmentsService {
    *
    * @param query  Pagination + search params
    * @param isAdmin  When true, inactive departments are included
+   * @param hospitalId  When non-null, scope results to that hospital
    */
-  async findAll(query: DepartmentQueryDto, isAdmin = false) {
+  async findAll(
+    query: DepartmentQueryDto,
+    isAdmin = false,
+    hospitalId: string | null = null,
+  ) {
     const where: Record<string, unknown> = {};
 
     if (!isAdmin) {
       where.isActive = true;
+    }
+
+    if (hospitalId) {
+      where.hospitalId = hospitalId;
     }
 
     if (query.search) {
@@ -93,8 +102,8 @@ export class DepartmentsService {
 
   // ───────────────────── Create ──────────────────────────────────────────────
 
-  async create(dto: CreateDepartmentDto) {
-    await this.ensureNameUnique(dto.name);
+  async create(dto: CreateDepartmentDto, hospitalId: string) {
+    await this.ensureNameUnique(dto.name, hospitalId);
 
     if (dto.headDoctorId) {
       await this.ensureUserExists(dto.headDoctorId);
@@ -107,6 +116,7 @@ export class DepartmentsService {
         floor: dto.floor,
         phone: dto.phone,
         headDoctorId: dto.headDoctorId,
+        hospitalId,
       },
       include: {
         headDoctor: {
@@ -118,11 +128,11 @@ export class DepartmentsService {
 
   // ───────────────────── Update ──────────────────────────────────────────────
 
-  async update(id: string, dto: UpdateDepartmentDto) {
+  async update(id: string, dto: UpdateDepartmentDto, hospitalId: string) {
     await this.ensureDepartmentExists(id);
 
     if (dto.name) {
-      await this.ensureNameUnique(dto.name, id);
+      await this.ensureNameUnique(dto.name, hospitalId, id);
     }
 
     if (dto.headDoctorId) {
@@ -171,10 +181,11 @@ export class DepartmentsService {
 
   private async ensureNameUnique(
     name: string,
+    hospitalId: string,
     excludeId?: string,
   ): Promise<void> {
     const existing = await this.prisma.department.findUnique({
-      where: { name },
+      where: { hospitalId_name: { hospitalId, name } },
       select: { id: true },
     });
 

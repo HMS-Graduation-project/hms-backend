@@ -23,9 +23,11 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AiModule } from './ai/ai.module';
 import { AuditModule } from './audit/audit.module';
+import { HospitalsModule } from './hospitals/hospitals.module';
+import { CitiesModule } from './cities/cities.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
-import { AuditInterceptor } from './common/interceptors';
+import { AuditInterceptor, RequestContextInterceptor } from './common/interceptors';
 
 @Module({
   imports: [
@@ -59,11 +61,17 @@ import { AuditInterceptor } from './common/interceptors';
     UploadsModule,
     AiModule,
     AuditModule,
+    HospitalsModule,
+    CitiesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // RequestContextInterceptor must run BEFORE AuditInterceptor so that
+    // downstream logic (including audit logging of hospital-scoped actions)
+    // sees the AsyncLocalStorage context.
+    { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
