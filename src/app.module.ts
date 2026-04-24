@@ -29,6 +29,7 @@ import { NationalRegistryModule } from './national-registry/national-registry.mo
 import { EmergencyModule } from './emergency/emergency.module';
 import { InpatientModule } from './inpatient/inpatient.module';
 import { ReferralsModule } from './referrals/referrals.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AuditInterceptor, RequestContextInterceptor } from './common/interceptors';
@@ -71,6 +72,7 @@ import { AuditInterceptor, RequestContextInterceptor } from './common/intercepto
     EmergencyModule,
     InpatientModule,
     ReferralsModule,
+    ReportingModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

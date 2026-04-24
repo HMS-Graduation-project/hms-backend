@@ -25,6 +25,7 @@ const USER_SELECT = {
   dateOfBirth: true,
   address: true,
   hospitalId: true,
+  cityId: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,

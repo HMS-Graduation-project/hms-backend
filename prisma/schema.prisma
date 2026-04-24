@@ -35,8 +35,13 @@ model User {
   dateOfBirth    DateTime?       @map("date_of_birth")
   address        String?
   isActive       Boolean         @default(true) @map("is_active")
-  hospitalId     String?         @map("hospital_id") // null for SUPER_ADMIN and future national/regional roles
+  hospitalId     String?         @map("hospital_id") // null for SUPER_ADMIN / MINISTRY_ADMIN / REGIONAL_ADMIN
   hospital       Hospital?       @relation(fields: [hospitalId], references: [id])
+  // cityId is set for REGIONAL_ADMIN (binds them to a city). Hospital-scoped
+  // users inherit cityId from hospital.cityId at token-mint time. MINISTRY_ADMIN
+  // / SUPER_ADMIN have cityId null (national scope).
+  cityId         String?         @map("city_id")
+  city           City?           @relation(fields: [cityId], references: [id])
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
@@ -599,6 +604,7 @@ model City {
   nameAr    String?    @map("name_ar")
   country   String     @default("SY")
   hospitals Hospital[]
+  users     User[]
   createdAt DateTime   @default(now()) @map("created_at")
 
   @@map("cities")

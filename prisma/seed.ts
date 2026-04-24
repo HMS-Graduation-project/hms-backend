@@ -119,6 +119,26 @@ async function main() {
   _aleppoHospitalId = aleppoHospital.id;
   console.log(`  Seeded city: ${aleppoCity.name}, hospital: ${aleppoHospital.name} [${aleppoHospital.code}]`);
 
+  // Third city (Homs) — small third node for more interesting national rollups.
+  const homsCity = await prisma.city.upsert({
+    where: { name: 'Homs' },
+    update: {},
+    create: { name: 'Homs', nameAr: 'حمص', country: 'SY' },
+  });
+  const homsHospital = await prisma.hospital.upsert({
+    where: { code: 'HOM-REG-01' },
+    update: { cityId: homsCity.id },
+    create: {
+      code: 'HOM-REG-01',
+      name: 'Homs Regional Hospital',
+      nameAr: 'مستشفى حمص الإقليمي',
+      cityId: homsCity.id,
+      address: 'Khalid ibn al-Walid Street, Homs',
+      phone: '+963-31-4444-000',
+    },
+  });
+  console.log(`  Seeded city: ${homsCity.name}, hospital: ${homsHospital.name} [${homsHospital.code}]`);
+
   // ─── 1. Super Admin ──────────────────────────────────────────────
   const superAdmin = await prisma.user.upsert({
     where: { email: process.env.ADMIN_EMAIL || 'superadmin@example.com' },
@@ -132,6 +152,77 @@ async function main() {
     },
   });
   console.log(`  Seeded: ${superAdmin.email} (${superAdmin.role})`);
+
+  // ─── 1b. National-scope admins (Phase 6) ─────────────────────────
+  const ministryAdmin = await prisma.user.upsert({
+    where: { email: 'ministry@hms.com' },
+    update: {
+      role: Role.MINISTRY_ADMIN,
+      firstName: 'Ministry',
+      lastName: 'Admin',
+      hospitalId: null,
+    },
+    create: {
+      email: 'ministry@hms.com',
+      passwordHash: hash,
+      role: Role.MINISTRY_ADMIN,
+      firstName: 'Ministry',
+      lastName: 'Admin',
+      hospitalId: null,
+    },
+  });
+  console.log(`  Seeded: ${ministryAdmin.email} (${ministryAdmin.role})`);
+
+  // NOTE: cityId is stored on the User only via an application-side
+  // convention — there is no FK column on `users`. JWT carries cityId by
+  // inspecting the user's role + a convention in auth.service.ts. To keep
+  // things simple while demonstrating the scope, we wire REGIONAL_ADMIN's
+  // city binding through a small lookup in auth.service.
+  const regionalAdminDamascus = await prisma.user.upsert({
+    where: { email: 'regional.damascus@hms.com' },
+    update: {
+      role: Role.REGIONAL_ADMIN,
+      firstName: 'Damascus',
+      lastName: 'Regional',
+      hospitalId: null,
+      cityId: demoCity.id,
+    },
+    create: {
+      email: 'regional.damascus@hms.com',
+      passwordHash: hash,
+      role: Role.REGIONAL_ADMIN,
+      firstName: 'Damascus',
+      lastName: 'Regional',
+      hospitalId: null,
+      cityId: demoCity.id,
+    },
+  });
+  console.log(
+    `  Seeded: ${regionalAdminDamascus.email} (${regionalAdminDamascus.role}) -> city: ${demoCity.name}`,
+  );
+
+  const regionalAdminAleppo = await prisma.user.upsert({
+    where: { email: 'regional.aleppo@hms.com' },
+    update: {
+      role: Role.REGIONAL_ADMIN,
+      firstName: 'Aleppo',
+      lastName: 'Regional',
+      hospitalId: null,
+      cityId: aleppoCity.id,
+    },
+    create: {
+      email: 'regional.aleppo@hms.com',
+      passwordHash: hash,
+      role: Role.REGIONAL_ADMIN,
+      firstName: 'Aleppo',
+      lastName: 'Regional',
+      hospitalId: null,
+      cityId: aleppoCity.id,
+    },
+  });
+  console.log(
+    `  Seeded: ${regionalAdminAleppo.email} (${regionalAdminAleppo.role}) -> city: ${aleppoCity.name}`,
+  );
 
   // ─── 2. Departments ──────────────────────────────────────────────
   const departmentData = [
@@ -1652,6 +1743,8 @@ async function main() {
   console.log('========================================');
   console.log('\nDemo credentials (all use password123):');
   console.log('  Super Admin  : superadmin@example.com / superadmin123');
+  console.log('  Ministry     : ministry@hms.com');
+  console.log('  Regional     : regional.damascus@hms.com, regional.aleppo@hms.com');
   console.log('  Admin        : admin@hms.com');
   console.log('  Receptionist : reception@hms.com');
   console.log('  Nurse        : nurse.aysel@hms.com');

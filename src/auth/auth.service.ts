@@ -31,6 +31,7 @@ export class AuthService {
       user.email,
       user.role,
       user.hospitalId ?? null,
+      (user as { cityId?: string | null }).cityId ?? null,
     );
     return {
       accessToken: token,
@@ -61,6 +62,7 @@ export class AuthService {
       user.email,
       user.role,
       user.hospitalId ?? null,
+      (user as { cityId?: string | null }).cityId ?? null,
     );
     return {
       accessToken: token,
@@ -75,17 +77,19 @@ export class AuthService {
     };
   }
 
-  // cityId is resolved from the user's hospital at token time. REGIONAL_ADMIN
-  // / MINISTRY_ADMIN roles don't exist until Phase 2, so cityId is always null
-  // in Phase 1 unless manually attached via hospital.cityId for city-bound roles.
+  // cityId resolution (Phase 6):
+  //  - If the user has an explicit cityId (REGIONAL_ADMIN), use it.
+  //  - Else if the user is bound to a hospital, inherit hospital.cityId.
+  //  - Else (SUPER_ADMIN / MINISTRY_ADMIN with no explicit city) leave null.
   private async generateToken(
     userId: string,
     email: string,
     role: string,
     hospitalId: string | null,
+    userCityId: string | null,
   ): Promise<string> {
-    let cityId: string | null = null;
-    if (hospitalId) {
+    let cityId: string | null = userCityId;
+    if (!cityId && hospitalId) {
       const hospital = await this.prisma.hospital.findUnique({
         where: { id: hospitalId },
         select: { cityId: true },
