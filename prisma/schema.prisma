@@ -40,12 +40,13 @@ model User {
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
-  doctorProfile    DoctorProfile?  @relation("DoctorUser")
-  patientProfile   PatientProfile? @relation("PatientUser")
-  headOfDepartment Department?     @relation("DepartmentHead")
-  labResults       LabResult[]     @relation("LabTechnician")
-  dispensings      Dispensing[]    @relation("PharmacistDispensing")
+  doctorProfile    DoctorProfile?   @relation("DoctorUser")
+  patientProfile   PatientProfile?  @relation("PatientUser")
+  headOfDepartment Department?      @relation("DepartmentHead")
+  labResults       LabResult[]      @relation("LabTechnician")
+  dispensings      Dispensing[]     @relation("PharmacistDispensing")
   notifications    Notification[]
+  triagedEmergencyVisits EmergencyVisit[] @relation("EmergencyTriagedBy")
 
   @@index([hospitalId])
   @@map("users")
@@ -64,6 +65,7 @@ model Department {
   hospital     Hospital        @relation(fields: [hospitalId], references: [id])
   doctors      DoctorProfile[] @relation("DepartmentDoctors")
   appointments Appointment[]
+  wards        Ward[]
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
@@ -89,11 +91,13 @@ model DoctorProfile {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  schedules       DoctorSchedule[]
-  appointments    Appointment[]    @relation("DoctorAppointments")
-  medicalRecords  MedicalRecord[]  @relation("DoctorRecords")
-  prescriptions   Prescription[]   @relation("DoctorPrescriptions")
-  labOrders       LabOrder[]       @relation("DoctorLabOrders")
+  schedules          DoctorSchedule[]
+  appointments       Appointment[]    @relation("DoctorAppointments")
+  medicalRecords     MedicalRecord[]  @relation("DoctorRecords")
+  prescriptions      Prescription[]   @relation("DoctorPrescriptions")
+  labOrders          LabOrder[]       @relation("DoctorLabOrders")
+  emergencyAttendings EmergencyVisit[] @relation("EmergencyAttending")
+  admissions          Admission[]      @relation("AdmittingDoctor")
 
   @@index([hospitalId])
   @@map("doctor_profiles")
@@ -118,11 +122,13 @@ model PatientProfile {
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
 
-  appointments             Appointment[]   @relation("PatientAppointments")
-  medicalRecords           MedicalRecord[] @relation("PatientRecords")
-  prescriptions            Prescription[]  @relation("PatientPrescriptions")
-  labOrders                LabOrder[]      @relation("PatientLabOrders")
-  invoices                 Invoice[]       @relation("PatientInvoices")
+  appointments             Appointment[]    @relation("PatientAppointments")
+  medicalRecords           MedicalRecord[]  @relation("PatientRecords")
+  prescriptions            Prescription[]   @relation("PatientPrescriptions")
+  labOrders                LabOrder[]       @relation("PatientLabOrders")
+  invoices                 Invoice[]        @relation("PatientInvoices")
+  emergencyVisits          EmergencyVisit[] @relation("PatientEmergencyVisits")
+  admissions               Admission[]      @relation("PatientAdmissions")
 
   @@unique([hospitalId, nationalPatientId])
   @@index([hospitalId])
@@ -188,29 +194,39 @@ model Appointment {
 }
 
 model MedicalRecord {
-  id             String         @id @default(uuid())
-  appointmentId  String         @unique @map("appointment_id")
-  appointment    Appointment    @relation(fields: [appointmentId], references: [id])
-  patientId      String         @map("patient_id")
-  patient        PatientProfile @relation("PatientRecords", fields: [patientId], references: [id])
-  doctorId       String         @map("doctor_id")
-  doctor         DoctorProfile  @relation("DoctorRecords", fields: [doctorId], references: [id])
-  hospitalId     String         @map("hospital_id")
-  hospital       Hospital       @relation(fields: [hospitalId], references: [id])
-  chiefComplaint String?        @map("chief_complaint")
-  presentIllness String?        @map("present_illness")
-  examination    String?
-  diagnosis      String?
-  icdCodes       String?        @map("icd_codes")
-  treatmentPlan  String?        @map("treatment_plan")
-  notes          String?
-  vitalSigns     VitalSigns?
-  prescriptions  Prescription[]
-  labOrders      LabOrder[]
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  id               String          @id @default(uuid())
+  // A MedicalRecord belongs to exactly one of: an Appointment (OPD),
+  // an EmergencyVisit (ER), or an Admission (IPD). All three FKs are
+  // optional; services enforce "exactly one" at the application layer.
+  // NOTE: admissionId is NOT unique — an admission generates many records
+  // over the stay (admission note, daily progress notes, discharge summary).
+  appointmentId    String?         @unique @map("appointment_id")
+  appointment      Appointment?    @relation(fields: [appointmentId], references: [id])
+  emergencyVisitId String?         @unique @map("emergency_visit_id")
+  emergencyVisit   EmergencyVisit? @relation(fields: [emergencyVisitId], references: [id])
+  admissionId      String?         @map("admission_id")
+  admission        Admission?      @relation(fields: [admissionId], references: [id])
+  patientId        String          @map("patient_id")
+  patient          PatientProfile  @relation("PatientRecords", fields: [patientId], references: [id])
+  doctorId         String          @map("doctor_id")
+  doctor           DoctorProfile   @relation("DoctorRecords", fields: [doctorId], references: [id])
+  hospitalId       String          @map("hospital_id")
+  hospital         Hospital        @relation(fields: [hospitalId], references: [id])
+  chiefComplaint   String?         @map("chief_complaint")
+  presentIllness   String?         @map("present_illness")
+  examination      String?
+  diagnosis        String?
+  icdCodes         String?         @map("icd_codes")
+  treatmentPlan    String?         @map("treatment_plan")
+  notes            String?
+  vitalSigns       VitalSigns?
+  prescriptions    Prescription[]
+  labOrders        LabOrder[]
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
 
   @@index([hospitalId])
+  @@index([admissionId])
   @@map("medical_records")
 }
 
@@ -491,6 +507,59 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─── Phase 3: Emergency Module ──────────────────────────────────
+
+enum TriageLevel {
+  RED    // 1 — resuscitation / immediate
+  ORANGE // 2 — emergent (<10 min)
+  YELLOW // 3 — urgent (<60 min)
+  GREEN  // 4 — less urgent (<120 min)
+  BLUE   // 5 — non-urgent
+}
+
+enum EmergencyVisitStatus {
+  ARRIVED        // just walked in, not yet triaged
+  IN_TRIAGE      // nurse is assessing
+  IN_TREATMENT   // triaged, doctor is/has claimed
+  DISCHARGED
+  ADMITTED
+  TRANSFERRED
+  LEFT_WITHOUT_BEING_SEEN
+}
+
+model EmergencyVisit {
+  id                 String               @id @default(uuid())
+  hospitalId         String               @map("hospital_id")
+  hospital           Hospital             @relation(fields: [hospitalId], references: [id])
+  nationalPatientId  String?              @map("national_patient_id") // null while patient is unidentified
+  nationalPatient    NationalPatient?     @relation(fields: [nationalPatientId], references: [id])
+  patientProfileId   String?              @map("patient_profile_id") // filled once a local PatientProfile is linked/created
+  patientProfile     PatientProfile?      @relation("PatientEmergencyVisits", fields: [patientProfileId], references: [id])
+  /// Placeholder name shown in queue until identification (e.g. "Unknown Male ~30y")
+  displayName        String               @map("display_name")
+  chiefComplaint     String               @map("chief_complaint")
+  arrivedAt          DateTime             @default(now()) @map("arrived_at")
+  triageLevel        TriageLevel?         @map("triage_level")
+  triagedById        String?              @map("triaged_by_id") // User id of the nurse/doctor who triaged
+  triagedBy          User?                @relation("EmergencyTriagedBy", fields: [triagedById], references: [id])
+  triagedAt          DateTime?            @map("triaged_at")
+  triageNotes        String?              @map("triage_notes")
+  attendingDoctorId  String?              @map("attending_doctor_id") // DoctorProfile id
+  attendingDoctor    DoctorProfile?       @relation("EmergencyAttending", fields: [attendingDoctorId], references: [id])
+  claimedAt          DateTime?            @map("claimed_at")
+  status             EmergencyVisitStatus @default(ARRIVED)
+  dispositionNotes   String?              @map("disposition_notes")
+  closedAt           DateTime?            @map("closed_at")
+  medicalRecord      MedicalRecord?
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@index([hospitalId, status])
+  @@index([hospitalId, arrivedAt])
+  @@index([nationalPatientId])
+  @@map("emergency_visits")
+}
+
 // ─── Phase 2: National Patient Registry ─────────────────────────
 
 model NationalPatient {
@@ -512,6 +581,7 @@ model NationalPatient {
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
   profiles          PatientProfile[]
+  emergencyVisits   EmergencyVisit[]
 
   @@index([syrianNationalId])
   @@index([lastName, firstName, dateOfBirth])
@@ -561,7 +631,122 @@ model Hospital {
   auditLogs        AuditLog[]
   holidays         Holiday[]
   settings         Setting[]
+  emergencyVisits  EmergencyVisit[]
+  wards            Ward[]
+  beds             Bed[]
+  admissions       Admission[]
 
   @@index([cityId])
   @@map("hospitals")
+}
+
+// ─── Phase 4: Inpatient (IPD) ───────────────────────────────────
+
+enum WardType {
+  GENERAL
+  ICU
+  NICU
+  POST_OP
+  ISOLATION
+  MATERNITY
+  PEDIATRIC
+}
+
+model Ward {
+  id           String      @id @default(uuid())
+  hospitalId   String      @map("hospital_id")
+  hospital     Hospital    @relation(fields: [hospitalId], references: [id])
+  departmentId String?     @map("department_id")
+  department   Department? @relation(fields: [departmentId], references: [id])
+  name         String
+  type         WardType    @default(GENERAL)
+  floor        String?
+  description  String?
+  isActive     Boolean     @default(true) @map("is_active")
+  beds         Bed[]
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  @@unique([hospitalId, name])
+  @@index([hospitalId])
+  @@map("wards")
+}
+
+enum BedStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+}
+
+model Bed {
+  id         String        @id @default(uuid())
+  hospitalId String        @map("hospital_id")
+  hospital   Hospital      @relation(fields: [hospitalId], references: [id])
+  wardId     String        @map("ward_id")
+  ward       Ward          @relation(fields: [wardId], references: [id])
+  number     String // bed identifier within the ward (e.g. "A-1", "ICU-03")
+  status     BedStatus     @default(AVAILABLE)
+  notes      String?
+  admissions Admission[] // historical admissions for this bed
+  transfersFrom BedTransfer[] @relation("BedTransferFrom")
+  transfersTo   BedTransfer[] @relation("BedTransferTo")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  @@unique([wardId, number])
+  @@index([hospitalId])
+  @@index([hospitalId, status])
+  @@map("beds")
+}
+
+enum AdmissionStatus {
+  ADMITTED
+  TRANSFERRED
+  DISCHARGED
+  DECEASED
+}
+
+model Admission {
+  id                String          @id @default(uuid())
+  hospitalId        String          @map("hospital_id")
+  hospital          Hospital        @relation(fields: [hospitalId], references: [id])
+  patientProfileId  String          @map("patient_profile_id")
+  patientProfile    PatientProfile  @relation("PatientAdmissions", fields: [patientProfileId], references: [id])
+  bedId             String?         @map("bed_id")
+  bed               Bed?            @relation(fields: [bedId], references: [id])
+  admittingDoctorId String          @map("admitting_doctor_id")
+  admittingDoctor   DoctorProfile   @relation("AdmittingDoctor", fields: [admittingDoctorId], references: [id])
+  admissionDate     DateTime        @default(now()) @map("admission_date")
+  dischargeDate     DateTime?       @map("discharge_date")
+  diagnosis         String?
+  reason            String?
+  status            AdmissionStatus @default(ADMITTED)
+  dischargeSummary  String?         @map("discharge_summary")
+  transfers         BedTransfer[]
+  medicalRecords    MedicalRecord[]
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  @@index([hospitalId, status])
+  @@index([hospitalId, admissionDate])
+  @@index([patientProfileId])
+  @@index([bedId])
+  @@map("admissions")
+}
+
+model BedTransfer {
+  id            String    @id @default(uuid())
+  admissionId   String    @map("admission_id")
+  admission     Admission @relation(fields: [admissionId], references: [id])
+  fromBedId     String?   @map("from_bed_id")
+  fromBed       Bed?      @relation("BedTransferFrom", fields: [fromBedId], references: [id])
+  toBedId       String    @map("to_bed_id")
+  toBed         Bed       @relation("BedTransferTo", fields: [toBedId], references: [id])
+  transferredAt DateTime  @default(now()) @map("transferred_at")
+  reason        String?
+  performedById String?   @map("performed_by_id") // User id
+
+  @@index([admissionId])
+  @@map("bed_transfers")
 }

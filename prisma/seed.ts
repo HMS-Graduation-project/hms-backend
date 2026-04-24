@@ -589,7 +589,7 @@ async function main() {
 
   interface MedRecordRef {
     id: string;
-    appointmentId: string;
+    appointmentId: string | null;
     patientId: string;
     doctorId: string;
   }
@@ -1215,6 +1215,247 @@ async function main() {
     console.log('    Created 7 audit log entries');
   } else {
     console.log('    Audit logs already seeded');
+  }
+
+  // ─── 19. Emergency Visits (Phase 3) ─────────────────────────────
+  console.log('\n  Seeding emergency visits...');
+  const existingErCount = await prisma.emergencyVisit.count();
+  if (existingErCount === 0) {
+    const nowMs = Date.now();
+    const minutesAgo = (m: number) => new Date(nowMs - m * 60_000);
+
+    // Mix of open + closed, different triage levels, identified vs not.
+    // We re-fetch the first doctor profile once for the attending role.
+    const firstDoc = doctorRefs[0];
+    const pat0 = patientRefs[0]; // Ali Vural
+    const pat1 = patientRefs[1];
+    const pat2 = patientRefs[2];
+
+    await prisma.emergencyVisit.createMany({
+      data: [
+        // RED — just arrived, unidentified
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Unknown Male ~40y',
+          chiefComplaint: 'Cardiac arrest en route, CPR in progress',
+          arrivedAt: minutesAgo(3),
+          status: 'ARRIVED',
+        },
+        // ORANGE — in triage
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Ali Vural',
+          nationalPatientId: pat0.nationalPatientId,
+          patientProfileId: pat0.profileId,
+          chiefComplaint: 'Severe chest pain, radiating to left arm',
+          arrivedAt: minutesAgo(15),
+          triageLevel: 'ORANGE',
+          triageNotes: 'BP 160/95, HR 110, SpO2 96%',
+          triagedById: nurseUser.id,
+          triagedAt: minutesAgo(10),
+          status: 'IN_TREATMENT',
+          attendingDoctorId: firstDoc.profileId,
+          claimedAt: minutesAgo(8),
+        },
+        // YELLOW — waiting on triage
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Elif Ozkan',
+          nationalPatientId: pat1.nationalPatientId,
+          patientProfileId: pat1.profileId,
+          chiefComplaint: 'High fever (39.5°C), sore throat, 2 days',
+          arrivedAt: minutesAgo(35),
+          status: 'IN_TRIAGE',
+        },
+        // GREEN — triaged, waiting for doctor
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Burak Celik',
+          nationalPatientId: pat2.nationalPatientId,
+          patientProfileId: pat2.profileId,
+          chiefComplaint: 'Sprained ankle after fall',
+          arrivedAt: minutesAgo(50),
+          triageLevel: 'GREEN',
+          triagedById: nurseUser.id,
+          triagedAt: minutesAgo(42),
+          triageNotes: 'Localized swelling, weight-bearing painful',
+          status: 'IN_TREATMENT',
+        },
+        // DISCHARGED earlier today
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Deniz Arslan',
+          nationalPatientId: patientRefs[3].nationalPatientId,
+          patientProfileId: patientRefs[3].profileId,
+          chiefComplaint: 'Migraine headache',
+          arrivedAt: minutesAgo(240),
+          triageLevel: 'YELLOW',
+          triagedById: nurseUser.id,
+          triagedAt: minutesAgo(235),
+          attendingDoctorId: doctorRefs[1].profileId,
+          claimedAt: minutesAgo(220),
+          status: 'DISCHARGED',
+          dispositionNotes: 'Sumatriptan prescribed, discharged with follow-up.',
+          closedAt: minutesAgo(180),
+        },
+        // ADMITTED
+        {
+          hospitalId: _demoHospitalId!,
+          displayName: 'Can Yildiz',
+          nationalPatientId: patientRefs[4].nationalPatientId,
+          patientProfileId: patientRefs[4].profileId,
+          chiefComplaint: 'Severe abdominal pain, possible appendicitis',
+          arrivedAt: minutesAgo(420),
+          triageLevel: 'ORANGE',
+          triagedById: nurseUser.id,
+          triagedAt: minutesAgo(415),
+          attendingDoctorId: doctorRefs[4].profileId,
+          claimedAt: minutesAgo(400),
+          status: 'ADMITTED',
+          dispositionNotes: 'Admitted to general surgery for evaluation.',
+          closedAt: minutesAgo(360),
+        },
+      ],
+    });
+    console.log('    Created 6 emergency visits (ARRIVED, IN_TRIAGE, IN_TREATMENT×2, DISCHARGED, ADMITTED)');
+  } else {
+    console.log('    Emergency visits already seeded');
+  }
+
+  // ─── 20. Inpatient — Wards, Beds, Admissions (Phase 4) ──────────
+  console.log('\n  Seeding wards + beds...');
+  const existingWardCount = await prisma.ward.count();
+  if (existingWardCount === 0) {
+    const cardioWard = await prisma.ward.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        name: 'Cardiology Ward A',
+        type: 'GENERAL',
+        departmentId: deptRecords['Cardiology'].id,
+        floor: '3',
+        description: 'General cardiology inpatient ward',
+      },
+    });
+    const icuWard = await prisma.ward.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        name: 'ICU',
+        type: 'ICU',
+        floor: '2',
+        description: 'Intensive Care Unit',
+      },
+    });
+    const surgeryWard = await prisma.ward.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        name: 'General Surgery Post-Op',
+        type: 'POST_OP',
+        departmentId: deptRecords['General Surgery'].id,
+        floor: '5',
+      },
+    });
+    console.log('    Created 3 wards (Cardiology A, ICU, General Surgery Post-Op)');
+
+    // Beds: 8 in Cardiology, 4 in ICU, 6 in Surgery Post-Op
+    const bedSpecs: Array<{ wardId: string; number: string }> = [];
+    for (let i = 1; i <= 8; i++) bedSpecs.push({ wardId: cardioWard.id, number: `A-${String(i).padStart(2, '0')}` });
+    for (let i = 1; i <= 4; i++) bedSpecs.push({ wardId: icuWard.id, number: `ICU-${String(i).padStart(2, '0')}` });
+    for (let i = 1; i <= 6; i++) bedSpecs.push({ wardId: surgeryWard.id, number: `S-${String(i).padStart(2, '0')}` });
+
+    await prisma.bed.createMany({
+      data: bedSpecs.map((b) => ({
+        hospitalId: _demoHospitalId!,
+        wardId: b.wardId,
+        number: b.number,
+        status: 'AVAILABLE' as const,
+      })),
+    });
+    console.log(`    Created ${bedSpecs.length} beds (8 Cardiology + 4 ICU + 6 Post-Op)`);
+
+    // Demo admissions: 2 active admissions (one in ICU, one in Cardiology), each
+    // occupies a bed. One historical discharged admission with a transfer trail.
+    const cardioBeds = await prisma.bed.findMany({
+      where: { wardId: cardioWard.id },
+      orderBy: { number: 'asc' },
+    });
+    const icuBeds = await prisma.bed.findMany({
+      where: { wardId: icuWard.id },
+      orderBy: { number: 'asc' },
+    });
+
+    // Active admission #1: Ali Vural in Cardiology A-01 (from ER chest-pain visit)
+    const adm1Bed = cardioBeds[0];
+    await prisma.bed.update({
+      where: { id: adm1Bed.id },
+      data: { status: 'OCCUPIED' },
+    });
+    const adm1 = await prisma.admission.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        patientProfileId: patientRefs[0].profileId,
+        admittingDoctorId: doctorRefs[0].profileId,
+        bedId: adm1Bed.id,
+        admissionDate: new Date(Date.now() - 8 * 60 * 60_000), // 8h ago
+        diagnosis: 'Acute coronary syndrome — observation',
+        reason: 'Transferred from ER after stabilization',
+        status: 'ADMITTED',
+      },
+    });
+
+    // Active admission #2: Can Yildiz in ICU-01 (from ER appendicitis case, now ICU post-op)
+    const adm2Bed = icuBeds[0];
+    await prisma.bed.update({
+      where: { id: adm2Bed.id },
+      data: { status: 'OCCUPIED' },
+    });
+    const adm2 = await prisma.admission.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        patientProfileId: patientRefs[4].profileId,
+        admittingDoctorId: doctorRefs[4].profileId,
+        bedId: adm2Bed.id,
+        admissionDate: new Date(Date.now() - 5 * 60 * 60_000),
+        diagnosis: 'Post-appendectomy, ICU monitoring',
+        reason: 'ER-initiated admission for emergency appendectomy',
+        status: 'ADMITTED',
+      },
+    });
+
+    // Historical admission with a bed transfer (Cardiology A-02 → A-03), then discharged
+    const histFromBed = cardioBeds[1];
+    const histToBed = cardioBeds[2];
+    const adm3 = await prisma.admission.create({
+      data: {
+        hospitalId: _demoHospitalId!,
+        patientProfileId: patientRefs[6].profileId,
+        admittingDoctorId: doctorRefs[1].profileId,
+        bedId: histToBed.id, // final bed
+        admissionDate: new Date(Date.now() - 4 * 24 * 60 * 60_000), // 4 days ago
+        dischargeDate: new Date(Date.now() - 2 * 24 * 60 * 60_000), // 2 days ago
+        diagnosis: 'Hypertensive crisis — managed',
+        reason: 'Direct admission from OPD',
+        status: 'DISCHARGED',
+        dischargeSummary:
+          'BP stabilized on ACE inhibitor. Discharged on amlodipine 5mg, follow-up in clinic in 2 weeks.',
+      },
+    });
+    await prisma.bedTransfer.create({
+      data: {
+        admissionId: adm3.id,
+        fromBedId: histFromBed.id,
+        toBedId: histToBed.id,
+        reason: 'Moved closer to nursing station for monitoring',
+        transferredAt: new Date(Date.now() - 3 * 24 * 60 * 60_000),
+      },
+    });
+    // Historical admission's bed is free again
+    console.log('    Created 3 admissions (2 active, 1 historical with a transfer)');
+
+    // Keep memory refs used by unused-var checks happy
+    void adm1;
+    void adm2;
+  } else {
+    console.log('    Wards already seeded');
   }
 
   // ═══════════════════════════════════════════════════════════════════
