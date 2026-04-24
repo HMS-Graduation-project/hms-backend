@@ -35,6 +35,14 @@ export class HospitalsController {
     return this.hospitalsService.getCurrentCallerHospital(user.hospitalId);
   }
 
+  @Get('referral-targets')
+  @ApiOperation({
+    summary: 'List every OTHER hospital (for populating referral-target selectors)',
+  })
+  listReferralTargets(@CurrentUser() user: AuthUser) {
+    return this.hospitalsService.listReferralTargets(user.hospitalId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get hospital by ID' })
   findOne(

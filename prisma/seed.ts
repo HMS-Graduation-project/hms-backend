@@ -15,6 +15,7 @@ const prisma = new PrismaClient();
 // Set inside main() after the demo hospital is upserted. upsertUser() reads it
 // so every seeded non-super user is automatically scoped to the demo hospital.
 let _demoHospitalId: string | null = null;
+let _aleppoHospitalId: string | null = null;
 
 // ─── Date Helpers ──────────────────────────────────────────────────
 const today = new Date();
@@ -95,6 +96,28 @@ async function main() {
   });
   _demoHospitalId = demoHospital.id;
   console.log(`  Seeded city: ${demoCity.name}, hospital: ${demoHospital.name} [${demoHospital.code}]`);
+
+  // Second hospital (Aleppo) — exists to demonstrate multi-tenancy isolation
+  // and inter-hospital referrals.
+  const aleppoCity = await prisma.city.upsert({
+    where: { name: 'Aleppo' },
+    update: {},
+    create: { name: 'Aleppo', nameAr: 'حلب', country: 'SY' },
+  });
+  const aleppoHospital = await prisma.hospital.upsert({
+    where: { code: 'ALP-CTR-01' },
+    update: { cityId: aleppoCity.id },
+    create: {
+      code: 'ALP-CTR-01',
+      name: 'Aleppo Central Hospital',
+      nameAr: 'مستشفى حلب المركزي',
+      cityId: aleppoCity.id,
+      address: 'Saadallah Al-Jabri Square, Aleppo',
+      phone: '+963-21-5555-000',
+    },
+  });
+  _aleppoHospitalId = aleppoHospital.id;
+  console.log(`  Seeded city: ${aleppoCity.name}, hospital: ${aleppoHospital.name} [${aleppoHospital.code}]`);
 
   // ─── 1. Super Admin ──────────────────────────────────────────────
   const superAdmin = await prisma.user.upsert({
@@ -1456,6 +1479,171 @@ async function main() {
     void adm2;
   } else {
     console.log('    Wards already seeded');
+  }
+
+  // ─── 21. Aleppo hospital — admin + 2 doctors + 1 department (Phase 5) ─
+  console.log('\n  Seeding Aleppo hospital staff...');
+  const aleppoExistingDocs = await prisma.doctorProfile.count({
+    where: { hospitalId: _aleppoHospitalId! },
+  });
+  let aleppoCardioDoc: { profileId: string; userId: string } | null = null;
+  if (aleppoExistingDocs === 0) {
+    // Aleppo cardiology department
+    const aleppoCardioDept = await prisma.department.upsert({
+      where: {
+        hospitalId_name: { hospitalId: _aleppoHospitalId!, name: 'Cardiology' },
+      },
+      update: {},
+      create: {
+        name: 'Cardiology',
+        description: 'Heart and cardiovascular system',
+        floor: '2',
+        phone: '+963-21-5555-201',
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+
+    // Aleppo hospital admin
+    const aleppoAdminUser = await prisma.user.upsert({
+      where: { email: 'admin.aleppo@hms.com' },
+      update: {
+        role: Role.HOSPITAL_ADMIN,
+        hospitalId: _aleppoHospitalId!,
+      },
+      create: {
+        email: 'admin.aleppo@hms.com',
+        passwordHash: hash,
+        role: Role.HOSPITAL_ADMIN,
+        firstName: 'Rami',
+        lastName: 'Haddad',
+        phone: '+963-940-100-001',
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+    console.log(`    Seeded: ${aleppoAdminUser.email} (HOSPITAL_ADMIN)`);
+
+    // Cardiology doctor at Aleppo — referral receiver
+    const aleppoCardioUser = await prisma.user.upsert({
+      where: { email: 'dr.nader.aleppo@hms.com' },
+      update: { role: Role.DOCTOR, hospitalId: _aleppoHospitalId! },
+      create: {
+        email: 'dr.nader.aleppo@hms.com',
+        passwordHash: hash,
+        role: Role.DOCTOR,
+        firstName: 'Nader',
+        lastName: 'Khouri',
+        phone: '+963-940-100-002',
+        gender: 'Male',
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+    const cardioProfile = await prisma.doctorProfile.upsert({
+      where: { userId: aleppoCardioUser.id },
+      update: {
+        specialization: 'Interventional Cardiology',
+        departmentId: aleppoCardioDept.id,
+        hospitalId: _aleppoHospitalId!,
+      },
+      create: {
+        userId: aleppoCardioUser.id,
+        specialization: 'Interventional Cardiology',
+        licenseNumber: 'SY-CARD-ALP-0001',
+        departmentId: aleppoCardioDept.id,
+        bio: 'Cardiac catheterization, PCI.',
+        yearsExperience: 12,
+        consultationFee: 200,
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+    aleppoCardioDoc = { profileId: cardioProfile.id, userId: aleppoCardioUser.id };
+    console.log(`    Seeded: Dr. Nader Khouri (Interventional Cardiology, Aleppo)`);
+
+    // General surgery doctor at Aleppo — second receiver
+    const aleppoSurgeonUser = await prisma.user.upsert({
+      where: { email: 'dr.layla.aleppo@hms.com' },
+      update: { role: Role.DOCTOR, hospitalId: _aleppoHospitalId! },
+      create: {
+        email: 'dr.layla.aleppo@hms.com',
+        passwordHash: hash,
+        role: Role.DOCTOR,
+        firstName: 'Layla',
+        lastName: 'Nasser',
+        phone: '+963-940-100-003',
+        gender: 'Female',
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+    await prisma.doctorProfile.upsert({
+      where: { userId: aleppoSurgeonUser.id },
+      update: {
+        specialization: 'General Surgery',
+        hospitalId: _aleppoHospitalId!,
+      },
+      create: {
+        userId: aleppoSurgeonUser.id,
+        specialization: 'General Surgery',
+        licenseNumber: 'SY-SURG-ALP-0001',
+        bio: 'Abdominal surgery.',
+        yearsExperience: 9,
+        consultationFee: 180,
+        hospitalId: _aleppoHospitalId!,
+      },
+    });
+    console.log(`    Seeded: Dr. Layla Nasser (General Surgery, Aleppo)`);
+  } else {
+    console.log('    Aleppo staff already seeded');
+    const existing = await prisma.doctorProfile.findFirst({
+      where: { hospitalId: _aleppoHospitalId!, specialization: 'Interventional Cardiology' },
+      select: { id: true, userId: true },
+    });
+    if (existing) {
+      aleppoCardioDoc = { profileId: existing.id, userId: existing.userId };
+    }
+  }
+
+  // ─── 22. Referrals (Phase 5) ────────────────────────────────────
+  console.log('\n  Seeding referrals...');
+  const existingReferrals = await prisma.referral.count();
+  const aleppoSurgeon = await prisma.doctorProfile.findFirst({
+    where: { hospitalId: _aleppoHospitalId!, specialization: 'General Surgery' },
+    select: { id: true },
+  });
+  if (existingReferrals === 0 && aleppoCardioDoc) {
+    // Ali Vural → Aleppo Cardiology (PENDING, urgent) — for the demo
+    await prisma.referral.create({
+      data: {
+        nationalPatientId: patientRefs[0].nationalPatientId,
+        fromHospitalId: _demoHospitalId!,
+        toHospitalId: _aleppoHospitalId!,
+        fromDoctorId: doctorRefs[0].profileId,
+        reason: 'Suspected STEMI — catheterization needed within 6 hours',
+        clinicalSummary:
+          'Patient presented with crushing chest pain radiating to left arm, ST elevation in V2–V5. Initial troponin elevated. Aspirin + clopidogrel loaded. Requires urgent PCI, not available locally.',
+        urgency: 'URGENT',
+        status: 'PENDING',
+      },
+    });
+
+    // Can Yildiz → Aleppo General Surgery (ACCEPTED) — grants cross-hospital access
+    await prisma.referral.create({
+      data: {
+        nationalPatientId: patientRefs[4].nationalPatientId,
+        fromHospitalId: _demoHospitalId!,
+        toHospitalId: _aleppoHospitalId!,
+        fromDoctorId: doctorRefs[4].profileId,
+        reason: 'Post-appendectomy complication — requires specialist review',
+        clinicalSummary:
+          'Patient underwent laparoscopic appendectomy 2 days ago. Now febrile with localized RLQ tenderness. Suspect intra-abdominal collection, considering CT-guided drainage.',
+        urgency: 'ROUTINE',
+        status: 'ACCEPTED',
+        respondedAt: new Date(Date.now() - 2 * 60 * 60_000),
+        responseNote: 'Accepted — arrange transfer for surgical review.',
+        toDoctorId: aleppoSurgeon?.id ?? aleppoCardioDoc.profileId,
+      },
+    });
+    console.log('    Created 2 referrals (1 PENDING urgent, 1 ACCEPTED routine)');
+  } else {
+    console.log('    Referrals already seeded (or Aleppo staff missing)');
   }
 
   // ═══════════════════════════════════════════════════════════════════

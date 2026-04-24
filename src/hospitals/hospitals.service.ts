@@ -45,6 +45,23 @@ export class HospitalsService {
     return hospital;
   }
 
+  /**
+   * Every active hospital except the caller's. Used to populate the target
+   * selector when authoring a referral. Any authenticated hospital user may
+   * call this — hospital names/locations are public info in the national
+   * platform.
+   */
+  async listReferralTargets(callerHospitalId: string | null) {
+    return this.prisma.hospital.findMany({
+      where: {
+        isActive: true,
+        ...(callerHospitalId ? { id: { not: callerHospitalId } } : {}),
+      },
+      include: { city: true },
+      orderBy: [{ city: { name: 'asc' } }, { name: 'asc' }],
+    });
+  }
+
   async getCurrentCallerHospital(callerHospitalId: string | null) {
     if (!callerHospitalId) {
       throw new NotFoundException(

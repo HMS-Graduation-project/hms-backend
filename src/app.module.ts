@@ -28,6 +28,7 @@ import { CitiesModule } from './cities/cities.module';
 import { NationalRegistryModule } from './national-registry/national-registry.module';
 import { EmergencyModule } from './emergency/emergency.module';
 import { InpatientModule } from './inpatient/inpatient.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AuditInterceptor, RequestContextInterceptor } from './common/interceptors';
@@ -69,6 +70,7 @@ import { AuditInterceptor, RequestContextInterceptor } from './common/intercepto
     NationalRegistryModule,
     EmergencyModule,
     InpatientModule,
+    ReferralsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

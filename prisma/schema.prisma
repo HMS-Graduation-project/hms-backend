@@ -98,6 +98,8 @@ model DoctorProfile {
   labOrders          LabOrder[]       @relation("DoctorLabOrders")
   emergencyAttendings EmergencyVisit[] @relation("EmergencyAttending")
   admissions          Admission[]      @relation("AdmittingDoctor")
+  referralsFrom       Referral[]       @relation("ReferralFromDoctor")
+  referralsTo         Referral[]       @relation("ReferralToDoctor")
 
   @@index([hospitalId])
   @@map("doctor_profiles")
@@ -582,6 +584,7 @@ model NationalPatient {
 
   profiles          PatientProfile[]
   emergencyVisits   EmergencyVisit[]
+  referrals         Referral[]
 
   @@index([syrianNationalId])
   @@index([lastName, firstName, dateOfBirth])
@@ -635,6 +638,8 @@ model Hospital {
   wards            Ward[]
   beds             Bed[]
   admissions       Admission[]
+  referralsFrom    Referral[] @relation("ReferralsFrom")
+  referralsTo      Referral[] @relation("ReferralsTo")
 
   @@index([cityId])
   @@map("hospitals")
@@ -749,4 +754,55 @@ model BedTransfer {
 
   @@index([admissionId])
   @@map("bed_transfers")
+}
+
+// ─── Phase 5: Referral (inter-hospital transfer) ────────────────
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReferralUrgency {
+  ROUTINE
+  URGENT
+  EMERGENT
+}
+
+// Cross-hospital referral. Granting body for canReadCrossHospital:
+// a Referral with status IN (ACCEPTED, COMPLETED) gives the receiving
+// hospital (toHospitalId) read-only access to the patient's records at
+// every hospital they have a PatientProfile at.
+// Not tenant-scoped (spans two hospitals). Service layer enforces
+// caller visibility via OR: [{fromHospitalId}, {toHospitalId}].
+model Referral {
+  id                String          @id @default(uuid())
+  nationalPatientId String          @map("national_patient_id")
+  nationalPatient   NationalPatient @relation(fields: [nationalPatientId], references: [id])
+  fromHospitalId    String          @map("from_hospital_id")
+  fromHospital      Hospital        @relation("ReferralsFrom", fields: [fromHospitalId], references: [id])
+  toHospitalId      String          @map("to_hospital_id")
+  toHospital        Hospital        @relation("ReferralsTo", fields: [toHospitalId], references: [id])
+  fromDoctorId      String          @map("from_doctor_id") // DoctorProfile of referring doctor
+  fromDoctor        DoctorProfile   @relation("ReferralFromDoctor", fields: [fromDoctorId], references: [id])
+  toDoctorId        String?         @map("to_doctor_id") // assigned on accept
+  toDoctor          DoctorProfile?  @relation("ReferralToDoctor", fields: [toDoctorId], references: [id])
+  reason            String
+  clinicalSummary   String?         @map("clinical_summary")
+  urgency           ReferralUrgency @default(ROUTINE)
+  status            ReferralStatus  @default(PENDING)
+  respondedAt       DateTime?       @map("responded_at")
+  responseNote      String?         @map("response_note")
+  completedAt       DateTime?       @map("completed_at")
+  cancelledAt       DateTime?       @map("cancelled_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  @@index([nationalPatientId])
+  @@index([toHospitalId, status])
+  @@index([fromHospitalId, status])
+  @@map("referrals")
 }
