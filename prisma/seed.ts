@@ -16,6 +16,9 @@ const prisma = new PrismaClient();
 // so every seeded non-super user is automatically scoped to the demo hospital.
 let _demoHospitalId: string | null = null;
 let _aleppoHospitalId: string | null = null;
+let _homsHospitalId: string | null = null;
+let _damChildrensHospitalId: string | null = null;
+let _aleppoUniHospitalId: string | null = null;
 
 // ─── Date Helpers ──────────────────────────────────────────────────
 const today = new Date();
@@ -137,7 +140,39 @@ async function main() {
       phone: '+963-31-4444-000',
     },
   });
+  _homsHospitalId = homsHospital.id;
   console.log(`  Seeded city: ${homsCity.name}, hospital: ${homsHospital.name} [${homsHospital.code}]`);
+
+  // ─── Phase 9 demo: 2 more hospitals for richer national rollups ──────
+  const damChildrens = await prisma.hospital.upsert({
+    where: { code: 'DAM-CHL-01' },
+    update: { cityId: demoCity.id },
+    create: {
+      code: 'DAM-CHL-01',
+      name: "Damascus Children's Hospital",
+      nameAr: 'مستشفى دمشق للأطفال',
+      cityId: demoCity.id,
+      address: 'Al-Mujtahid Square, Damascus',
+      phone: '+963-11-6666-100',
+    },
+  });
+  _damChildrensHospitalId = damChildrens.id;
+  console.log(`  Seeded hospital: ${damChildrens.name} [${damChildrens.code}]`);
+
+  const aleppoUni = await prisma.hospital.upsert({
+    where: { code: 'ALP-UNI-01' },
+    update: { cityId: aleppoCity.id },
+    create: {
+      code: 'ALP-UNI-01',
+      name: 'Aleppo University Hospital',
+      nameAr: 'مستشفى جامعة حلب',
+      cityId: aleppoCity.id,
+      address: 'University Boulevard, Aleppo',
+      phone: '+963-21-5555-200',
+    },
+  });
+  _aleppoUniHospitalId = aleppoUni.id;
+  console.log(`  Seeded hospital: ${aleppoUni.name} [${aleppoUni.code}]`);
 
   // ─── 1. Super Admin ──────────────────────────────────────────────
   const superAdmin = await prisma.user.upsert({
@@ -1737,6 +1772,305 @@ async function main() {
     console.log('    Referrals already seeded (or Aleppo staff missing)');
   }
 
+  // ─── 23. Phase 7 portal demo — cross-hospital patient ───────────
+  // Give patient[4] (Can Yildiz) a PatientProfile at Aleppo + one upcoming
+  // appointment there, so the portal demo shows the cross-hospital fan-out
+  // (his login lives at Damascus, but his record spans both hospitals).
+  console.log('\n  Seeding Phase 7 cross-hospital patient profile…');
+  if (aleppoSurgeon) {
+    const crossPatient = patientRefs[4]; // Can Yildiz
+    const aleppoProfile = await prisma.patientProfile.upsert({
+      where: {
+        hospitalId_nationalPatientId: {
+          hospitalId: _aleppoHospitalId!,
+          nationalPatientId: crossPatient.nationalPatientId,
+        },
+      },
+      update: {},
+      create: {
+        // userId NULL — there is one User per patient (their Damascus login).
+        // The Aleppo profile is a "shadow" sharing the NHID for clinical
+        // continuity.
+        nationalPatientId: crossPatient.nationalPatientId,
+        hospitalId: _aleppoHospitalId!,
+        bloodType: 'A-',
+        allergies: 'Sulfa drugs',
+        medicalNotes:
+          'Cross-hospital follow-up after referral from Damascus General.',
+      },
+      select: { id: true },
+    });
+    const futureDate = daysFromNow(7);
+    const aleppoAppointmentExists = await prisma.appointment.findFirst({
+      where: {
+        hospitalId: _aleppoHospitalId!,
+        patientId: aleppoProfile.id,
+        date: futureDate,
+      },
+      select: { id: true },
+    });
+    if (!aleppoAppointmentExists) {
+      await prisma.appointment.create({
+        data: {
+          patientId: aleppoProfile.id,
+          doctorId: aleppoSurgeon.id,
+          hospitalId: _aleppoHospitalId!,
+          date: futureDate,
+          startTime: '10:00',
+          endTime: '10:30',
+          status: AppointmentStatus.CONFIRMED,
+          type: 'FOLLOW_UP',
+          reason: 'Post-appendectomy review (cross-hospital follow-up)',
+        },
+      });
+      console.log(
+        `    Linked Can Yildiz to Aleppo Central Hospital + booked a follow-up appointment in 7 days.`,
+      );
+    } else {
+      console.log('    Phase 7 cross-hospital appointment already seeded.');
+    }
+  } else {
+    console.log('    Skipped — Aleppo surgeon not found.');
+  }
+
+  // ─── 24. Phase 9 — Homs hospital staff + minimal IPD ─────────────
+  // The Homs node was empty until Phase 9; the ministry dashboard showed
+  // it as a third city with zero KPIs. We now give it an admin, one GP,
+  // an Internal Medicine department, and a small ward so referrals INTO
+  // Homs land somewhere meaningful and the disease-trends chart picks
+  // up cross-city activity.
+  console.log('\n  Seeding Homs hospital staff + IPD (Phase 9)...');
+  const homsExistingDocs = await prisma.doctorProfile.count({
+    where: { hospitalId: _homsHospitalId! },
+  });
+  let homsGpDoc: { profileId: string; userId: string } | null = null;
+  if (homsExistingDocs === 0) {
+    const homsIntDept = await prisma.department.upsert({
+      where: {
+        hospitalId_name: {
+          hospitalId: _homsHospitalId!,
+          name: 'Internal Medicine',
+        },
+      },
+      update: {},
+      create: {
+        name: 'Internal Medicine',
+        description: 'General internal medicine and chronic care',
+        floor: '1',
+        phone: '+963-31-4444-101',
+        hospitalId: _homsHospitalId!,
+      },
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'admin.homs@hms.com' },
+      update: { role: Role.HOSPITAL_ADMIN, hospitalId: _homsHospitalId! },
+      create: {
+        email: 'admin.homs@hms.com',
+        passwordHash: hash,
+        role: Role.HOSPITAL_ADMIN,
+        firstName: 'Faris',
+        lastName: 'Mansour',
+        phone: '+963-940-200-001',
+        hospitalId: _homsHospitalId!,
+      },
+    });
+
+    const homsGpUser = await prisma.user.upsert({
+      where: { email: 'dr.salma.homs@hms.com' },
+      update: { role: Role.DOCTOR, hospitalId: _homsHospitalId! },
+      create: {
+        email: 'dr.salma.homs@hms.com',
+        passwordHash: hash,
+        role: Role.DOCTOR,
+        firstName: 'Salma',
+        lastName: 'Idris',
+        phone: '+963-940-200-002',
+        gender: 'Female',
+        hospitalId: _homsHospitalId!,
+      },
+    });
+    const homsGpProfile = await prisma.doctorProfile.upsert({
+      where: { userId: homsGpUser.id },
+      update: {
+        specialization: 'Internal Medicine',
+        departmentId: homsIntDept.id,
+        hospitalId: _homsHospitalId!,
+      },
+      create: {
+        userId: homsGpUser.id,
+        specialization: 'Internal Medicine',
+        licenseNumber: 'SY-INT-HOM-0001',
+        departmentId: homsIntDept.id,
+        bio: 'Internal medicine, chronic disease management.',
+        yearsExperience: 7,
+        consultationFee: 120,
+        hospitalId: _homsHospitalId!,
+      },
+    });
+    homsGpDoc = { profileId: homsGpProfile.id, userId: homsGpUser.id };
+    console.log(`    Seeded: Dr. Salma Idris (Internal Medicine, Homs)`);
+
+    // Small ward + 4 beds so Homs registers in bed-occupancy KPIs.
+    const homsWard = await prisma.ward.upsert({
+      where: {
+        hospitalId_name: { hospitalId: _homsHospitalId!, name: 'General Ward A' },
+      },
+      update: {},
+      create: {
+        name: 'General Ward A',
+        type: 'GENERAL',
+        floor: '1',
+        hospitalId: _homsHospitalId!,
+      },
+    });
+    for (let i = 1; i <= 4; i++) {
+      await prisma.bed.upsert({
+        where: {
+          wardId_number: { wardId: homsWard.id, number: `H${String(i).padStart(2, '0')}` },
+        },
+        update: {},
+        create: {
+          number: `H${String(i).padStart(2, '0')}`,
+          wardId: homsWard.id,
+          hospitalId: _homsHospitalId!,
+        },
+      });
+    }
+    console.log(`    Seeded: 1 ward + 4 beds at Homs`);
+  } else {
+    console.log('    Homs staff already seeded');
+    const existing = await prisma.doctorProfile.findFirst({
+      where: { hospitalId: _homsHospitalId!, specialization: 'Internal Medicine' },
+      select: { id: true, userId: true },
+    });
+    if (existing) {
+      homsGpDoc = { profileId: existing.id, userId: existing.userId };
+    }
+  }
+
+  // ─── 25. Phase 9 — Damascus → Aleppo → Homs referral chain ──────
+  // Demonstrates the unified national identity by chaining a patient
+  // across three hospitals. We pick patient[2] (Burak Celik) for this
+  // chain so it does not collide with the Phase 5/7 demos on
+  // patient[0] / patient[4].
+  console.log('\n  Seeding cross-city referral chain (Phase 9)...');
+  if (aleppoCardioDoc && homsGpDoc) {
+    const chainPatient = patientRefs[2]; // Burak Celik
+    const damSeniorDoc = doctorRefs[1].profileId; // Damascus neurologist
+
+    const chainExisting = await prisma.referral.count({
+      where: { nationalPatientId: chainPatient.nationalPatientId },
+    });
+    if (chainExisting === 0) {
+      // Hop 1: Damascus → Aleppo (COMPLETED — patient was treated, then
+      // forwarded to Homs for long-term internal-medicine follow-up).
+      await prisma.referral.create({
+        data: {
+          nationalPatientId: chainPatient.nationalPatientId,
+          fromHospitalId: _demoHospitalId!,
+          toHospitalId: _aleppoHospitalId!,
+          fromDoctorId: damSeniorDoc,
+          toDoctorId: aleppoCardioDoc.profileId,
+          reason: 'Coronary catheterization — equipment unavailable locally',
+          clinicalSummary:
+            'Stable angina, positive stress test. Patient stable for transfer; cath suite booked.',
+          urgency: 'URGENT',
+          status: 'COMPLETED',
+          respondedAt: new Date(Date.now() - 14 * 86_400_000),
+          completedAt: new Date(Date.now() - 7 * 86_400_000),
+          responseNote: 'PCI completed without complications.',
+        },
+      });
+
+      // Hop 2: Aleppo → Homs (ACCEPTED — long-term follow-up close to
+      // patient's home town).
+      await prisma.referral.create({
+        data: {
+          nationalPatientId: chainPatient.nationalPatientId,
+          fromHospitalId: _aleppoHospitalId!,
+          toHospitalId: _homsHospitalId!,
+          fromDoctorId: aleppoCardioDoc.profileId,
+          toDoctorId: homsGpDoc.profileId,
+          reason: 'Post-PCI long-term follow-up near patient residence',
+          clinicalSummary:
+            'Patient received PCI 1 week ago. Stable. Needs ongoing antiplatelet management and cardiac risk-factor follow-up.',
+          urgency: 'ROUTINE',
+          status: 'ACCEPTED',
+          respondedAt: new Date(Date.now() - 2 * 86_400_000),
+          responseNote: 'Accepted — booked into outpatient internal medicine.',
+        },
+      });
+
+      // Auto-create the per-hospital shadow profiles + a follow-up
+      // appointment at Homs so the chain is visible end-to-end.
+      const aleppoShadow = await prisma.patientProfile.upsert({
+        where: {
+          hospitalId_nationalPatientId: {
+            hospitalId: _aleppoHospitalId!,
+            nationalPatientId: chainPatient.nationalPatientId,
+          },
+        },
+        update: {},
+        create: {
+          nationalPatientId: chainPatient.nationalPatientId,
+          hospitalId: _aleppoHospitalId!,
+          medicalNotes: 'Chain referral from Damascus — PCI completed.',
+        },
+        select: { id: true },
+      });
+      const homsShadow = await prisma.patientProfile.upsert({
+        where: {
+          hospitalId_nationalPatientId: {
+            hospitalId: _homsHospitalId!,
+            nationalPatientId: chainPatient.nationalPatientId,
+          },
+        },
+        update: {},
+        create: {
+          nationalPatientId: chainPatient.nationalPatientId,
+          hospitalId: _homsHospitalId!,
+          medicalNotes: 'Long-term follow-up after PCI in Aleppo.',
+        },
+        select: { id: true },
+      });
+
+      const followUp = daysFromNow(10);
+      const exists = await prisma.appointment.findFirst({
+        where: {
+          hospitalId: _homsHospitalId!,
+          patientId: homsShadow.id,
+          date: followUp,
+        },
+        select: { id: true },
+      });
+      if (!exists) {
+        await prisma.appointment.create({
+          data: {
+            patientId: homsShadow.id,
+            doctorId: homsGpDoc.profileId,
+            hospitalId: _homsHospitalId!,
+            date: followUp,
+            startTime: '11:00',
+            endTime: '11:30',
+            status: AppointmentStatus.CONFIRMED,
+            type: 'FOLLOW_UP',
+            reason: 'Cardiac follow-up post-PCI (cross-city referral)',
+          },
+        });
+      }
+      // Use aleppoShadow so it is referenced (avoids unused warnings).
+      void aleppoShadow;
+      console.log(
+        '    Created chain: Damascus → Aleppo (COMPLETED) → Homs (ACCEPTED) for Burak Celik',
+      );
+    } else {
+      console.log('    Referral chain already seeded.');
+    }
+  } else {
+    console.log('    Skipped chain — missing Aleppo/Homs doctors.');
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   console.log('\n========================================');
   console.log('  HMS Seed completed successfully!');
@@ -1752,6 +2086,17 @@ async function main() {
   console.log('  Lab Tech     : lab.tech@hms.com');
   console.log('  Doctors      : dr.ayse@example.com, dr.mehmet@example.com, ...');
   console.log('  Patients     : ali.vural@example.com, elif.ozkan@example.com, ...');
+  console.log('  Aleppo admin : admin.aleppo@hms.com');
+  console.log('  Aleppo docs  : dr.nader.aleppo@hms.com, dr.layla.aleppo@hms.com');
+  console.log('  Homs admin   : admin.homs@hms.com');
+  console.log('  Homs doctor  : dr.salma.homs@hms.com');
+  console.log('  Portal demo  : can.yildiz@example.com  (Damascus + Aleppo)');
+  console.log('  Chain demo   : burak.celik@example.com  (Damascus → Aleppo → Homs)');
+  console.log('\nNetwork: 5 hospitals across 3 cities');
+  console.log('  Damascus    : Damascus General Hospital, Damascus Children\'s Hospital');
+  console.log('  Aleppo      : Aleppo Central Hospital, Aleppo University Hospital');
+  console.log('  Homs        : Homs Regional Hospital');
+  console.log('\nSee hms-infra/DEMO.md for the full defense walkthrough.');
   console.log('========================================\n');
 }
 

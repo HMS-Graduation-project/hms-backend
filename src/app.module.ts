@@ -30,6 +30,7 @@ import { EmergencyModule } from './emergency/emergency.module';
 import { InpatientModule } from './inpatient/inpatient.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { PortalModule } from './portal/portal.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { AuditInterceptor, RequestContextInterceptor } from './common/interceptors';
@@ -73,6 +74,7 @@ import { AuditInterceptor, RequestContextInterceptor } from './common/intercepto
     InpatientModule,
     ReferralsModule,
     ReportingModule,
+    PortalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
