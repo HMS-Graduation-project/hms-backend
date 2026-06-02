@@ -251,21 +251,22 @@ export class ReportingService {
     }));
   }
 
-  // ─── Daily patient volume ──────────────────────────────────────────
+  // ─── Daily patient volume (appointments-based) ─────────────────────
 
   private async dailyPatientVolume(
     hospitalIds: string[],
     periodStart: Date,
   ) {
     if (hospitalIds.length === 0) return [];
+    // Use appointments.date for volume — far more data than ER-only visits.
     const rows = await this.prisma.$queryRaw<
       { day: Date; visits: bigint }[]
     >(Prisma.sql`
-      SELECT date_trunc('day', arrived_at) AS day,
-             COUNT(*)::bigint              AS visits
-        FROM emergency_visits
+      SELECT date_trunc('day', date) AS day,
+             COUNT(*)::bigint        AS visits
+        FROM appointments
        WHERE hospital_id IN (${Prisma.join(hospitalIds)})
-         AND arrived_at  >= ${periodStart}
+         AND date        >= ${periodStart}
     GROUP BY day
     ORDER BY day
     `);
@@ -273,6 +274,104 @@ export class ReportingService {
       day: r.day.toISOString().slice(0, 10),
       visits: Number(r.visits),
     }));
+  }
+
+  // ─── KPI trends (current vs previous period) ─────────────────────
+
+  private async nationalTrends(
+    hospitalIds: string[],
+    periodStart: Date,
+    periodDays: number,
+  ) {
+    const previousStart = new Date(periodStart);
+    previousStart.setDate(previousStart.getDate() - periodDays);
+
+    if (hospitalIds.length === 0) {
+      return { patientsTrend: null, referralsTrend: null, erTrend: null };
+    }
+
+    const [
+      currentPatients,
+      previousPatients,
+      currentReferrals,
+      previousReferrals,
+      currentEr,
+      previousEr,
+    ] = await Promise.all([
+      this.prisma.patientProfile.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          createdAt: { gte: periodStart },
+        },
+      }),
+      this.prisma.patientProfile.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          createdAt: { gte: previousStart, lt: periodStart },
+        },
+      }),
+      this.prisma.referral.count({
+        where: {
+          createdAt: { gte: periodStart },
+          status: { in: ['PENDING', 'ACCEPTED'] },
+        },
+      }),
+      this.prisma.referral.count({
+        where: {
+          createdAt: { gte: previousStart, lt: periodStart },
+          status: { in: ['PENDING', 'ACCEPTED'] },
+        },
+      }),
+      this.prisma.emergencyVisit.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          arrivedAt: { gte: periodStart },
+        },
+      }),
+      this.prisma.emergencyVisit.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          arrivedAt: { gte: previousStart, lt: periodStart },
+        },
+      }),
+    ]);
+
+    const pct = (curr: number, prev: number) =>
+      prev > 0 ? Math.round(((curr - prev) / prev) * 1000) / 10 : null;
+
+    return {
+      patientsTrend: pct(currentPatients, previousPatients),
+      referralsTrend: pct(currentReferrals, previousReferrals),
+      erTrend: pct(currentEr, previousEr),
+    };
+  }
+
+  // ─── Emergency load per city ──────────────────────────────────────
+
+  private async emergencyLoad(hospitalIds: string[], periodStart: Date) {
+    if (hospitalIds.length === 0) {
+      return { activeCases: 0, totalVisits: 0 };
+    }
+
+    const [activeCases, totalVisits] = await Promise.all([
+      // Active = not yet closed (all statuses except terminal ones)
+      this.prisma.emergencyVisit.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          status: {
+            in: ['ARRIVED', 'IN_TRIAGE', 'IN_TREATMENT'],
+          },
+        },
+      }),
+      this.prisma.emergencyVisit.count({
+        where: {
+          hospitalId: { in: hospitalIds },
+          arrivedAt: { gte: periodStart },
+        },
+      }),
+    ]);
+
+    return { activeCases, totalVisits };
   }
 
   // ─── Public: regional summary ──────────────────────────────────────
@@ -468,15 +567,14 @@ export class ReportingService {
       this.prisma.city.count(),
     ]);
 
-    const topDiagnoses = await this.topDiagnoses(
-      scope.hospitalIds,
-      periodStart,
-      limit,
-    );
-    const dailyVolume = await this.dailyPatientVolume(
-      scope.hospitalIds,
-      periodStart,
-    );
+    const days = this.periodDays(query.period);
+
+    const [topDiagnoses, dailyVolume, trends, erLoad] = await Promise.all([
+      this.topDiagnoses(scope.hospitalIds, periodStart, limit),
+      this.dailyPatientVolume(scope.hospitalIds, periodStart),
+      this.nationalTrends(scope.hospitalIds, periodStart, days),
+      this.emergencyLoad(scope.hospitalIds, periodStart),
+    ]);
 
     return {
       scope: {
@@ -491,6 +589,8 @@ export class ReportingService {
         nationalPatients,
         activeReferralsInPeriod: activeReferrals,
       },
+      trends,
+      emergency: erLoad,
       cities: cityRollups,
       topDiagnoses,
       dailyPatientVolume: dailyVolume,
