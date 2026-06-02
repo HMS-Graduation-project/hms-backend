@@ -44,21 +44,30 @@ export class AnalyticsController {
   // ──────────────────── Appointment Stats ────────────────────────────────────
 
   @Get('appointments')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.HOSPITAL_ADMIN,
+    Role.DOCTOR,
+    Role.NURSE,
+    Role.RECEPTIONIST,
+    Role.PHARMACIST,
+    Role.LAB_TECHNICIAN,
+  )
   @ApiOperation({
     summary: 'Get appointment counts grouped by period',
     description:
-      'Returns appointment counts grouped by day (for week/month) or by month (for year).',
+      'Returns appointment counts with status breakdown (total, confirmed, completed, cancelled).',
   })
   @ApiQuery({
     name: 'period',
     required: false,
-    enum: ['week', 'month', 'year'],
+    enum: ['daily', 'week', 'month', 'year'],
     description: 'Time period to aggregate over (default: week)',
     example: 'week',
   })
   async getAppointmentStats(
-    @Query('period') period: 'week' | 'month' | 'year' = 'week',
+    @Query('period') period: 'daily' | 'week' | 'month' | 'year' = 'week',
   ) {
     return this.analyticsService.getAppointmentStats(period);
   }
@@ -66,27 +75,47 @@ export class AnalyticsController {
   // ──────────────────── Revenue Stats ────────────────────────────────────────
 
   @Get('revenue')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.HOSPITAL_ADMIN,
+    Role.DOCTOR,
+    Role.NURSE,
+    Role.RECEPTIONIST,
+    Role.PHARMACIST,
+    Role.LAB_TECHNICIAN,
+  )
   @ApiOperation({
-    summary: 'Get revenue breakdown by category and month',
+    summary: 'Get revenue breakdown by category with growth percentage',
     description:
-      'Returns revenue from invoice items grouped by month and category for the last 12 months.',
+      'Returns total revenue, growth vs previous period, and per-category breakdown.',
   })
   @ApiQuery({
     name: 'period',
     required: false,
-    enum: ['month'],
+    enum: ['month', 'quarter', 'year'],
     description: 'Aggregation period (default: month)',
     example: 'month',
   })
-  async getRevenueStats(@Query('period') period: 'month' = 'month') {
+  async getRevenueStats(
+    @Query('period') period: 'month' | 'quarter' | 'year' = 'month',
+  ) {
     return this.analyticsService.getRevenueStats(period);
   }
 
   // ──────────────────── Department Stats ─────────────────────────────────────
 
   @Get('departments')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.HOSPITAL_ADMIN,
+    Role.DOCTOR,
+    Role.NURSE,
+    Role.RECEPTIONIST,
+    Role.PHARMACIST,
+    Role.LAB_TECHNICIAN,
+  )
   @ApiOperation({
     summary: 'Get per-department statistics',
     description:

@@ -70,11 +70,17 @@ export class AnalyticsService {
 
   // ───────────────────── Appointment Stats ──────────────────────────────────
 
-  async getAppointmentStats(period: 'week' | 'month' | 'year') {
+  async getAppointmentStats(
+    period: 'daily' | 'week' | 'month' | 'year',
+  ) {
     const now = new Date();
     let startDate: Date;
 
     switch (period) {
+      case 'daily':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 14); // last 14 days
+        break;
       case 'week':
         startDate = new Date(now);
         startDate.setDate(now.getDate() - 7);
@@ -87,56 +93,115 @@ export class AnalyticsService {
         break;
     }
 
-    // Truncate to appropriate precision in Postgres
     const trunc = period === 'year' ? 'month' : 'day';
 
     const rows = await this.prisma.$queryRaw<
-      { period: Date; count: bigint }[]
+      {
+        bucket: Date;
+        total: bigint;
+        confirmed: bigint;
+        completed: bigint;
+        cancelled: bigint;
+      }[]
     >`
-      SELECT date_trunc(${trunc}, date) AS period,
-             COUNT(*)::bigint           AS count
+      SELECT date_trunc(${trunc}, date)                                    AS bucket,
+             COUNT(*)::bigint                                              AS total,
+             COUNT(*) FILTER (WHERE status = 'CONFIRMED')::bigint          AS confirmed,
+             COUNT(*) FILTER (WHERE status = 'COMPLETED')::bigint          AS completed,
+             COUNT(*) FILTER (WHERE status = 'CANCELLED')::bigint          AS cancelled
         FROM appointments
        WHERE date >= ${startDate}
-       GROUP BY period
-       ORDER BY period
+       GROUP BY bucket
+       ORDER BY bucket
     `;
 
-    return rows.map((r) => ({
-      period: r.period,
-      count: Number(r.count),
-    }));
+    return {
+      period,
+      data: rows.map((r) => ({
+        label: r.bucket.toISOString().slice(0, 10),
+        total: Number(r.total),
+        confirmed: Number(r.confirmed),
+        completed: Number(r.completed),
+        cancelled: Number(r.cancelled),
+      })),
+    };
   }
 
   // ───────────────────── Revenue Stats ──────────────────────────────────────
 
-  async getRevenueStats(period: 'month') {
-    // Default: last 12 months of revenue by invoice-item category
-    const monthsAgo = new Date();
-    monthsAgo.setMonth(monthsAgo.getMonth() - 12);
+  async getRevenueStats(period: 'month' | 'quarter' | 'year') {
+    const now = new Date();
+    let currentStart: Date;
+    let previousStart: Date;
 
-    if (period === 'month') {
-      const rows = await this.prisma.$queryRaw<
-        { month: Date; category: string; revenue: number }[]
-      >`
-        SELECT date_trunc('month', p.paid_at)  AS month,
-               ii.category,
-               SUM(ii.total)::float8            AS revenue
-          FROM payments   p
-          JOIN invoices    i  ON i.id = p.invoice_id
-          JOIN invoice_items ii ON ii.invoice_id = i.id
-         WHERE p.paid_at >= ${monthsAgo}
-         GROUP BY month, ii.category
-         ORDER BY month, ii.category
-      `;
-
-      return rows.map((r) => ({
-        month: r.month,
-        category: r.category,
-        revenue: Number(r.revenue),
-      }));
+    switch (period) {
+      case 'month':
+        currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        previousStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        break;
+      case 'quarter': {
+        const q = Math.floor(now.getMonth() / 3);
+        currentStart = new Date(now.getFullYear(), q * 3, 1);
+        previousStart = new Date(now.getFullYear(), (q - 1) * 3, 1);
+        break;
+      }
+      case 'year':
+        currentStart = new Date(now.getFullYear(), 0, 1);
+        previousStart = new Date(now.getFullYear() - 1, 0, 1);
+        break;
     }
 
-    return [];
+    const currentEnd = now;
+
+    // Category breakdown for current period
+    const categoryRows = await this.prisma.$queryRaw<
+      { category: string; amount: number }[]
+    >`
+      SELECT ii.category,
+             COALESCE(SUM(ii.total), 0)::float8 AS amount
+        FROM payments      p
+        JOIN invoices       i  ON i.id = p.invoice_id
+        JOIN invoice_items  ii ON ii.invoice_id = i.id
+       WHERE p.paid_at >= ${currentStart}
+         AND p.paid_at <  ${currentEnd}
+       GROUP BY ii.category
+       ORDER BY amount DESC
+    `;
+
+    const totalRevenue = categoryRows.reduce(
+      (sum, r) => sum + Number(r.amount),
+      0,
+    );
+
+    // Previous period total for growth calculation
+    const prevRows = await this.prisma.$queryRaw<
+      { amount: number }[]
+    >`
+      SELECT COALESCE(SUM(ii.total), 0)::float8 AS amount
+        FROM payments      p
+        JOIN invoices       i  ON i.id = p.invoice_id
+        JOIN invoice_items  ii ON ii.invoice_id = i.id
+       WHERE p.paid_at >= ${previousStart}
+         AND p.paid_at <  ${currentStart}
+    `;
+
+    const previousRevenue = Number(prevRows[0]?.amount ?? 0);
+    const growthPercentage =
+      previousRevenue > 0
+        ? Math.round(
+            ((totalRevenue - previousRevenue) / previousRevenue) * 1000,
+          ) / 10 // one decimal place
+        : null; // avoid division by zero
+
+    return {
+      period,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      growthPercentage,
+      categories: categoryRows.map((r) => ({
+        category: r.category,
+        amount: Math.round(Number(r.amount) * 100) / 100,
+      })),
+    };
   }
 
   // ───────────────────── Department Stats ───────────────────────────────────
