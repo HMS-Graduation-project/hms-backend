@@ -232,8 +232,24 @@ export class AnalyticsService {
        GROUP BY department_id
     `;
 
+    // Compute revenue per department: Department → Appointment → Invoice → InvoiceItem (paid)
+    const revenueCounts = await this.prisma.$queryRaw<
+      { department_id: string; revenue: number }[]
+    >`
+      SELECT a.department_id,
+             COALESCE(SUM(ii.total), 0)::float8 AS revenue
+        FROM appointments    a
+        JOIN invoices        i  ON i.appointment_id = a.id
+        JOIN invoice_items   ii ON ii.invoice_id    = i.id
+       WHERE a.department_id IS NOT NULL
+       GROUP BY a.department_id
+    `;
+
     const patientMap = new Map(
       patientCounts.map((r) => [r.department_id, Number(r.patient_count)]),
+    );
+    const revenueMap = new Map(
+      revenueCounts.map((r) => [r.department_id, Math.round(Number(r.revenue) * 100) / 100]),
     );
 
     return departments.map((dept) => ({
@@ -242,6 +258,7 @@ export class AnalyticsService {
       doctorCount: dept._count.doctors,
       appointmentCount: dept._count.appointments,
       patientCount: patientMap.get(dept.id) ?? 0,
+      revenue: revenueMap.get(dept.id) ?? 0,
     }));
   }
 }
