@@ -78,11 +78,46 @@ async function main() {
     10,
   );
 
-  // ─── 0. Default City + Hospital (multi-tenancy foundation) ───────
-  const demoCity = await prisma.city.upsert({
+  // ─── 0. Syrian Governorates & Cities ─────────────────────────────
+  // Seed all 14 governorates as cities with governorate field.
+  // Existing cities get their governorate set via the update clause.
+  const governorateCities: Array<{ name: string; nameAr: string; governorate: string }> = [
+    { name: 'Damascus', nameAr: 'دمشق', governorate: 'Damascus' },
+    { name: 'Rural Damascus', nameAr: 'ريف دمشق', governorate: 'Rural Damascus' },
+    { name: 'Aleppo', nameAr: 'حلب', governorate: 'Aleppo' },
+    { name: 'Homs', nameAr: 'حمص', governorate: 'Homs' },
+    { name: 'Hama', nameAr: 'حماة', governorate: 'Hama' },
+    { name: 'Latakia', nameAr: 'اللاذقية', governorate: 'Latakia' },
+    { name: 'Tartus', nameAr: 'طرطوس', governorate: 'Tartus' },
+    { name: 'Idlib', nameAr: 'إدلب', governorate: 'Idlib' },
+    { name: 'Daraa', nameAr: 'درعا', governorate: 'Daraa' },
+    { name: 'As-Suwayda', nameAr: 'السويداء', governorate: 'As-Suwayda' },
+    { name: 'Quneitra', nameAr: 'القنيطرة', governorate: 'Quneitra' },
+    { name: 'Deir ez-Zor', nameAr: 'دير الزور', governorate: 'Deir ez-Zor' },
+    { name: 'Al-Hasakah', nameAr: 'الحسكة', governorate: 'Al-Hasakah' },
+    { name: 'Raqqa', nameAr: 'الرقة', governorate: 'Raqqa' },
+  ];
+
+  // Additional major cities (not governorate capitals)
+  const additionalCities: Array<{ name: string; nameAr: string; governorate: string }> = [
+    { name: 'Qamishli', nameAr: 'القامشلي', governorate: 'Al-Hasakah' },
+    { name: 'Jableh', nameAr: 'جبلة', governorate: 'Latakia' },
+    { name: 'Baniyas', nameAr: 'بانياس', governorate: 'Tartus' },
+    { name: 'Manbij', nameAr: 'منبج', governorate: 'Aleppo' },
+  ];
+
+  const allCities = [...governorateCities, ...additionalCities];
+  for (const c of allCities) {
+    await prisma.city.upsert({
+      where: { name: c.name },
+      update: { nameAr: c.nameAr, governorate: c.governorate },
+      create: { name: c.name, nameAr: c.nameAr, governorate: c.governorate, country: 'SY' },
+    });
+  }
+  console.log(`  Seeded ${allCities.length} Syrian cities with governorates`);
+
+  const demoCity = await prisma.city.findUniqueOrThrow({
     where: { name: 'Damascus' },
-    update: {},
-    create: { name: 'Damascus', nameAr: 'دمشق', country: 'SY' },
   });
 
   const demoHospital = await prisma.hospital.upsert({
@@ -102,10 +137,8 @@ async function main() {
 
   // Second hospital (Aleppo) — exists to demonstrate multi-tenancy isolation
   // and inter-hospital referrals.
-  const aleppoCity = await prisma.city.upsert({
+  const aleppoCity = await prisma.city.findUniqueOrThrow({
     where: { name: 'Aleppo' },
-    update: {},
-    create: { name: 'Aleppo', nameAr: 'حلب', country: 'SY' },
   });
   const aleppoHospital = await prisma.hospital.upsert({
     where: { code: 'ALP-CTR-01' },
@@ -123,10 +156,8 @@ async function main() {
   console.log(`  Seeded city: ${aleppoCity.name}, hospital: ${aleppoHospital.name} [${aleppoHospital.code}]`);
 
   // Third city (Homs) — small third node for more interesting national rollups.
-  const homsCity = await prisma.city.upsert({
+  const homsCity = await prisma.city.findUniqueOrThrow({
     where: { name: 'Homs' },
-    update: {},
-    create: { name: 'Homs', nameAr: 'حمص', country: 'SY' },
   });
   const homsHospital = await prisma.hospital.upsert({
     where: { code: 'HOM-REG-01' },
@@ -173,6 +204,35 @@ async function main() {
   });
   _aleppoUniHospitalId = aleppoUni.id;
   console.log(`  Seeded hospital: ${aleppoUni.name} [${aleppoUni.code}]`);
+
+  // ─── Reference hospitals in other governorates ────────────────────
+  const refHospitals: Array<{ code: string; name: string; nameAr: string; city: string; address: string }> = [
+    { code: 'DAM-MWS-01', name: 'Al-Mouwasat Hospital', nameAr: 'مستشفى المواساة', city: 'Damascus', address: 'Mazzeh, Damascus' },
+    { code: 'DAM-MJT-01', name: 'Damascus Hospital (Mujtahid)', nameAr: 'مستشفى المجتهد', city: 'Damascus', address: 'Al-Mujtahid, Damascus' },
+    { code: 'ALP-RAZ-01', name: 'Al-Razi Hospital', nameAr: 'مستشفى الرازي', city: 'Aleppo', address: 'Central Aleppo' },
+    { code: 'HOM-WTN-01', name: 'Al-Watani Hospital', nameAr: 'المستشفى الوطني', city: 'Homs', address: 'Central Homs' },
+    { code: 'HOM-BSL-01', name: 'Al-Basel Hospital', nameAr: 'مستشفى الباسل', city: 'Homs', address: 'Western Homs' },
+    { code: 'LAT-TSH-01', name: 'Tishreen University Hospital', nameAr: 'مستشفى تشرين الجامعي', city: 'Latakia', address: 'University Campus, Latakia' },
+    { code: 'TAR-NAT-01', name: 'National Hospital of Tartus', nameAr: 'المستشفى الوطني بطرطوس', city: 'Tartus', address: 'Central Tartus' },
+  ];
+
+  for (const h of refHospitals) {
+    const city = await prisma.city.findUnique({ where: { name: h.city }, select: { id: true } });
+    if (city) {
+      await prisma.hospital.upsert({
+        where: { code: h.code },
+        update: { cityId: city.id },
+        create: {
+          code: h.code,
+          name: h.name,
+          nameAr: h.nameAr,
+          cityId: city.id,
+          address: h.address,
+        },
+      });
+    }
+  }
+  console.log(`  Seeded ${refHospitals.length} reference hospitals`);
 
   // ─── 1. Super Admin ──────────────────────────────────────────────
   const superAdmin = await prisma.user.upsert({

@@ -4,12 +4,14 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateCityDto } from './dto/create-city.dto';
+import { UpdateCityDto } from './dto/update-city.dto';
 import { CitiesService } from './cities.service';
 
 @ApiTags('Cities')
@@ -31,9 +33,19 @@ export class CitiesController {
   }
 
   @Post()
-  @Roles(Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Create a new city (SUPER_ADMIN only)' })
+  @Roles(Role.SUPER_ADMIN, Role.MINISTRY_ADMIN)
+  @ApiOperation({ summary: 'Create a new city' })
   create(@Body() dto: CreateCityDto) {
     return this.citiesService.create(dto);
+  }
+
+  @Patch(':id')
+  @Roles(Role.SUPER_ADMIN, Role.MINISTRY_ADMIN)
+  @ApiOperation({ summary: 'Update a city' })
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCityDto,
+  ) {
+    return this.citiesService.update(id, dto);
   }
 }

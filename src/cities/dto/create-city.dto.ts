@@ -11,6 +11,11 @@ export class CreateCityDto {
   @IsString()
   nameAr?: string;
 
+  @ApiPropertyOptional({ example: 'Damascus Governorate' })
+  @IsOptional()
+  @IsString()
+  governorate?: string;
+
   @ApiPropertyOptional({ description: 'ISO country code', example: 'SY', default: 'SY' })
   @IsOptional()
   @IsString()

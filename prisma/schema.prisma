@@ -599,13 +599,15 @@ model NationalPatient {
 // ─── Phase 1: Multi-Tenancy Foundation ──────────────────────────
 
 model City {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  nameAr    String?    @map("name_ar")
-  country   String     @default("SY")
-  hospitals Hospital[]
-  users     User[]
-  createdAt DateTime   @default(now()) @map("created_at")
+  id          String     @id @default(uuid())
+  name        String     @unique
+  nameAr      String?    @map("name_ar")
+  governorate String?
+  country     String     @default("SY")
+  isActive    Boolean    @default(true) @map("is_active")
+  hospitals   Hospital[]
+  users       User[]
+  createdAt   DateTime   @default(now()) @map("created_at")
 
   @@map("cities")
 }
