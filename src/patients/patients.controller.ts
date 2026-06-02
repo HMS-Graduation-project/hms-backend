@@ -29,7 +29,7 @@ export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
   @Post()
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.RECEPTIONIST)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.HOSPITAL_ADMIN, Role.RECEPTIONIST)
   @ApiOperation({ summary: 'Register a new patient' })
   async create(
     @Body() dto: CreatePatientDto,
