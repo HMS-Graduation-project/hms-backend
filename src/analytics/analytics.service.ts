@@ -38,11 +38,16 @@ export class AnalyticsService {
     ] = await Promise.all([
       this.prisma.patientProfile.count(),
       this.prisma.doctorProfile.count(),
+      // Today's appointments — exclude CANCELLED and NO_SHOW
       this.prisma.appointment.count({
-        where: { date: { gte: todayStart, lt: todayEnd } },
+        where: {
+          date: { gte: todayStart, lt: todayEnd },
+          status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        },
       }),
+      // Pending lab orders — all non-terminal statuses
       this.prisma.labOrder.count({
-        where: { status: { in: ['ORDERED', 'IN_PROGRESS'] } },
+        where: { status: { in: ['ORDERED', 'SAMPLE_COLLECTED', 'IN_PROGRESS'] } },
       }),
       this.prisma.payment.aggregate({
         _sum: { amount: true },
