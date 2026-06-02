@@ -22,7 +22,16 @@ export class AnalyticsController {
   // ──────────────────── Dashboard Summary ────────────────────────────────────
 
   @Get('dashboard')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.HOSPITAL_ADMIN,
+    Role.DOCTOR,
+    Role.NURSE,
+    Role.RECEPTIONIST,
+    Role.PHARMACIST,
+    Role.LAB_TECHNICIAN,
+  )
   @ApiOperation({
     summary: 'Get dashboard summary stats',
     description:
