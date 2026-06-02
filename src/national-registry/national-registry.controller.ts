@@ -35,6 +35,15 @@ import { NationalRegistryService } from './national-registry.service';
 export class NationalRegistryController {
   constructor(private readonly service: NationalRegistryService) {}
 
+  @Get('stats')
+  @Roles(Role.SUPER_ADMIN, Role.MINISTRY_ADMIN)
+  @ApiOperation({
+    summary: 'Registry KPI stats: total patients, new this month, multi-hospital, potential duplicates',
+  })
+  getStats() {
+    return this.service.getStats();
+  }
+
   @Get('search')
   @Roles(
     Role.SUPER_ADMIN,

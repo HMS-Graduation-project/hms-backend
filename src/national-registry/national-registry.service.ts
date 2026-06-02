@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNationalPatientDto } from './dto/create-national-patient.dto';
 import { UpdateNationalPatientDto } from './dto/update-national-patient.dto';
@@ -12,6 +13,53 @@ import { SearchNationalPatientDto } from './dto/search-national-patient.dto';
 @Injectable()
 export class NationalRegistryService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ───────────────────── Registry Stats ─────────────────────────────────
+
+  async getStats() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      totalPatients,
+      newThisMonth,
+      multiHospitalRows,
+      duplicateCandidateRows,
+    ] = await Promise.all([
+      this.prisma.nationalPatient.count(),
+      this.prisma.nationalPatient.count({
+        where: { createdAt: { gte: monthStart } },
+      }),
+      // Patients linked to more than one hospital
+      this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS count
+          FROM (
+            SELECT national_patient_id
+              FROM patient_profiles
+             GROUP BY national_patient_id
+            HAVING COUNT(DISTINCT hospital_id) > 1
+          ) sub
+      `),
+      // Potential duplicates: same (firstName, lastName, dateOfBirth) across different NHIDs
+      this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS count
+          FROM (
+            SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, date_of_birth
+              FROM national_patients
+             WHERE first_name IS NOT NULL AND last_name IS NOT NULL
+             GROUP BY fn, ln, date_of_birth
+            HAVING COUNT(*) > 1
+          ) sub
+      `),
+    ]);
+
+    return {
+      totalPatients,
+      newThisMonth,
+      multiHospitalPatients: Number(multiHospitalRows[0]?.count ?? 0),
+      potentialDuplicates: Number(duplicateCandidateRows[0]?.count ?? 0),
+    };
+  }
 
   /**
    * Search the national registry. Returns up to 20 matches.
