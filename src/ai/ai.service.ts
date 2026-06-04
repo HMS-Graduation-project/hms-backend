@@ -1,11 +1,21 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
+  PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import * as FormData from 'form-data';
+
+const PNEUMONIA_ALLOWED_MIMES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/jpg',
+]);
+const PNEUMONIA_MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @Injectable()
 export class AiService {
@@ -21,9 +31,8 @@ export class AiService {
       'http://ai:8000';
   }
 
-  /**
-   * Call the AI service to predict diseases based on symptoms.
-   */
+  // ──────────────────── Symptom / Drug (existing) ──────────────────────
+
   async predictDisease(symptoms: string[]): Promise<unknown> {
     try {
       const response = await firstValueFrom(
@@ -41,9 +50,6 @@ export class AiService {
     }
   }
 
-  /**
-   * Call the AI service to check drug interactions.
-   */
   async checkDrugInteractions(medications: string[]): Promise<unknown> {
     try {
       const response = await firstValueFrom(
@@ -59,6 +65,120 @@ export class AiService {
       );
       throw new ServiceUnavailableException(
         'AI service is currently unavailable. Please try again later.',
+      );
+    }
+  }
+
+  // ──────────────────── Pneumonia Detection ────────────────────────────
+
+  async pneumoniaHealth(): Promise<unknown> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/api/v1/ai/pneumonia/health`,
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `AI pneumonia-health call failed: ${error.message}`,
+        error.stack,
+      );
+      throw new ServiceUnavailableException(
+        'Pneumonia AI service is currently unavailable.',
+      );
+    }
+  }
+
+  /**
+   * Validate uploaded chest X-ray file.
+   */
+  private validateXrayFile(file: Express.Multer.File): void {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    if (!PNEUMONIA_ALLOWED_MIMES.has(file.mimetype)) {
+      throw new BadRequestException(
+        `Unsupported file type "${file.mimetype}". Use JPG or PNG.`,
+      );
+    }
+    if (file.size > PNEUMONIA_MAX_SIZE) {
+      throw new PayloadTooLargeException(
+        `File too large (${Math.round(file.size / 1024)} KB). Max 10 MB.`,
+      );
+    }
+  }
+
+  /**
+   * Forward X-ray file to FastAPI as multipart/form-data.
+   */
+  private buildFormData(file: Express.Multer.File): FormData {
+    const form = new FormData();
+    form.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    return form;
+  }
+
+  async pneumoniaPredict(file: Express.Multer.File): Promise<unknown> {
+    this.validateXrayFile(file);
+    try {
+      const form = this.buildFormData(file);
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/api/v1/ai/pneumonia/predict`,
+          form,
+          { headers: form.getHeaders(), maxContentLength: 15_000_000 },
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof PayloadTooLargeException
+      ) {
+        throw error;
+      }
+      this.logger.error(
+        `AI pneumonia-predict call failed: ${error.message}`,
+        error.stack,
+      );
+      throw new ServiceUnavailableException(
+        'Pneumonia AI service is currently unavailable. Please try again later.',
+      );
+    }
+  }
+
+  async pneumoniaExplain(file: Express.Multer.File): Promise<unknown> {
+    this.validateXrayFile(file);
+    try {
+      const form = this.buildFormData(file);
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/api/v1/ai/pneumonia/explain`,
+          form,
+          {
+            headers: form.getHeaders(),
+            maxContentLength: 15_000_000,
+            timeout: 60_000, // Grad-CAM is slower
+          },
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof PayloadTooLargeException
+      ) {
+        throw error;
+      }
+      this.logger.error(
+        `AI pneumonia-explain call failed: ${error.message}`,
+        error.stack,
+      );
+      throw new ServiceUnavailableException(
+        'Pneumonia AI service is currently unavailable. Please try again later.',
       );
     }
   }
