@@ -2,41 +2,22 @@ import { Injectable } from '@nestjs/common';
 import * as PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateClinicalReport, type ReportLang } from '../report/clinical-report.builder';
 
 const UPLOADS_BASE = path.join(process.cwd(), 'uploads', 'ai', 'pneumonia');
 
-// Deterministic clinical report text (same logic as frontend)
-const FINDINGS: Record<string, string> = {
-  LOW: 'The AI screening did not detect clear radiological indicators supporting pneumonia in this image.',
-  MODERATE: 'The AI screening detected inconclusive radiological indicators that may require clinical correlation.',
-  ELEVATED: 'The AI screening detected possible radiological indicators that may be associated with a pneumonia pattern.',
-  HIGH: 'The AI screening detected relatively strong radiological indicators that may be consistent with pneumonia.',
-};
-const IMPRESSION: Record<string, string> = {
-  LOW: 'The AI-assisted analysis suggests a low probability of pneumonia.',
-  MODERATE: 'The AI-assisted analysis suggests a moderate probability of pneumonia. Clinical evaluation is needed.',
-  ELEVATED: 'The AI-assisted analysis suggests an elevated probability of pneumonia, though the result did not exceed the positive classification threshold.',
-  HIGH: 'The AI-assisted analysis classifies this result as high suspicion for pneumonia.',
-};
-const SIGNIFICANCE: Record<string, string> = {
-  LOW: 'The result is relatively reassuring, but does not fully exclude disease if clinical symptoms are strong.',
-  MODERATE: 'This result should be interpreted alongside symptoms, clinical examination, and inflammatory markers.',
-  ELEVATED: 'This result may be clinically significant in the presence of respiratory symptoms such as fever, cough, dyspnea, or decreased oxygen saturation.',
-  HIGH: 'This result may require more urgent medical attention depending on the patient condition and overall clinical picture.',
-};
-const RECOMMENDATION: Record<string, string> = {
-  LOW: 'Clinical follow-up is recommended based on the patient condition. The AI result alone should not be relied upon.',
-  MODERATE: 'Physician review and clinical correlation are recommended. Additional tests may be needed depending on the case.',
-  ELEVATED: 'Specialist physician review is recommended. Correlate with symptoms and laboratory findings before making a final decision.',
-  HIGH: 'Clinical evaluation by a specialist physician is recommended. Correlate with the patient clinical picture and accompanying investigations.',
-};
-
-const DISCLAIMER = 'This AI-assisted report is not a final diagnosis. Final clinical decision must be made by a qualified physician after clinical correlation.';
-
 @Injectable()
 export class ReportPdfService {
-  generateReport(record: any): PDFKit.PDFDocument {
+  generateReport(record: any, lang: ReportLang = 'en'): PDFKit.PDFDocument {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
+
+    const report = generateClinicalReport(
+      record.riskLevel,
+      record.analysisMode,
+      record.modelAgreement,
+      lang,
+    );
+    const L = report.labels;
 
     const risk = (record.riskLevel || 'LOW').toUpperCase();
     const isEnsemble = record.analysisMode === 'ENSEMBLE';
@@ -54,7 +35,7 @@ export class ReportPdfService {
 
     // ── Header ────────────────────────────────────────────────
     doc.fontSize(18).font('Helvetica-Bold')
-      .text('AI-Assisted Chest X-Ray Radiology Report', { align: 'center' });
+      .text(report.reportTitle, { align: 'center' });
     doc.moveDown(0.3);
     doc.fontSize(10).font('Helvetica')
       .text(hospitalName, { align: 'center' });
@@ -66,58 +47,64 @@ export class ReportPdfService {
     doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#ccc').stroke();
     doc.moveDown(0.5);
 
-    // ── Patient & Analysis Info ────────────────────────────────
+    // ── Patient Info ──────────────────────────────────────────
     doc.fillColor('#000');
-    this.sectionTitle(doc, 'Patient Information');
-    this.row(doc, 'Patient', patientName);
-    if (np?.syrianNationalId) this.row(doc, 'National ID', np.syrianNationalId);
-    this.row(doc, 'Hospital', hospitalName);
+    this.sectionTitle(doc, L.patient);
+    this.row(doc, L.patient, patientName);
+    if (np?.syrianNationalId) this.row(doc, L.nationalId, np.syrianNationalId);
+    this.row(doc, L.hospital, hospitalName);
     doc.moveDown(0.3);
 
-    this.sectionTitle(doc, 'Analysis Information');
-    this.row(doc, 'Date', new Date(record.createdAt).toLocaleString());
-    this.row(doc, 'Type', 'Pneumonia Chest X-Ray');
-    this.row(doc, 'Mode', isEnsemble ? 'Ensemble (DenseNet121 + EfficientNet-B0 + ResNet50)' : 'Single Model (DenseNet121)');
-    this.row(doc, 'Status', record.status);
-    this.row(doc, 'Requested By', requestedBy);
+    // ── Analysis Info ─────────────────────────────────────────
+    this.sectionTitle(doc, L.analysisMode);
+    this.row(doc, L.date, new Date(record.createdAt).toLocaleString());
+    this.row(doc, L.type, L.pneumoniaXray);
+    this.row(doc, L.mode, isEnsemble ? L.ensembleMode : L.singleMode);
+    this.row(doc, L.status, record.status);
+    this.row(doc, L.requestedBy, requestedBy);
     if (reviewedBy) {
-      this.row(doc, 'Reviewed By', reviewedBy);
-      if (record.reviewedAt) this.row(doc, 'Reviewed At', new Date(record.reviewedAt).toLocaleString());
+      this.row(doc, L.reviewedBy, reviewedBy);
+      if (record.reviewedAt) this.row(doc, L.reviewedAt, new Date(record.reviewedAt).toLocaleString());
     }
     doc.moveDown(0.3);
 
     // ── Clinical Summary ──────────────────────────────────────
-    this.sectionTitle(doc, 'Clinical Summary');
-    this.row(doc, 'Prediction', record.prediction);
-    this.row(doc, isEnsemble ? 'Final Consensus' : 'Probability', `${prob}%`);
-    this.row(doc, 'Risk Level', risk);
-    this.row(doc, 'Clinical Threshold', `${thresh}%`);
+    this.sectionTitle(doc, L.prediction);
+    this.row(doc, L.prediction, record.prediction);
+    this.row(doc, isEnsemble ? L.finalConsensus : L.probability, `${prob}%`);
+    this.row(doc, L.riskLevel, risk);
+    this.row(doc, L.clinicalThreshold, `${thresh}%`);
     if (isEnsemble && record.modelAgreement) {
-      this.row(doc, 'Model Agreement', record.modelAgreement);
-      if (record.agreementScore != null) this.row(doc, 'Agreement Score', `${(record.agreementScore * 100).toFixed(0)}%`);
+      this.row(doc, L.modelAgreement, record.modelAgreement);
+      if (record.agreementScore != null) this.row(doc, L.agreementScore, `${(record.agreementScore * 100).toFixed(0)}%`);
     }
     doc.moveDown(0.3);
 
-    // ── AI Findings ───────────────────────────────────────────
+    // ── Report Sections (from shared builder) ─────────────────
     this.sectionTitle(doc, 'AI Findings');
-    doc.fontSize(10).font('Helvetica').text(FINDINGS[risk] || FINDINGS.LOW);
+    doc.fontSize(10).font('Helvetica').text(report.aiFindings);
     doc.moveDown(0.3);
 
     this.sectionTitle(doc, 'AI Impression');
-    doc.fontSize(10).font('Helvetica').text(IMPRESSION[risk] || IMPRESSION.LOW);
+    doc.fontSize(10).font('Helvetica').text(report.aiImpression);
     doc.moveDown(0.3);
 
     this.sectionTitle(doc, 'Clinical Significance');
-    doc.fontSize(10).font('Helvetica').text(SIGNIFICANCE[risk] || SIGNIFICANCE.LOW);
+    doc.fontSize(10).font('Helvetica').text(report.clinicalSignificance);
     doc.moveDown(0.3);
 
     this.sectionTitle(doc, 'Recommendation');
-    doc.fontSize(10).font('Helvetica').text(RECOMMENDATION[risk] || RECOMMENDATION.LOW);
+    doc.fontSize(10).font('Helvetica').text(report.recommendation);
+    doc.moveDown(0.3);
+
+    // ── Model Agreement ───────────────────────────────────────
+    this.sectionTitle(doc, L.modelAgreement);
+    doc.fontSize(10).font('Helvetica').text(report.modelAgreementText);
     doc.moveDown(0.3);
 
     // ── Ensemble Details ──────────────────────────────────────
     if (isEnsemble && record.modelResultsJson && Array.isArray(record.modelResultsJson)) {
-      this.sectionTitle(doc, 'Ensemble Model Breakdown');
+      this.sectionTitle(doc, L.ensembleBreakdown);
       const weights = record.ensembleWeightsJson || {};
       for (const m of record.modelResultsJson as any[]) {
         const w = weights[m.modelName] ? `(weight: ${(weights[m.modelName] * 100).toFixed(0)}%)` : '';
@@ -128,39 +115,38 @@ export class ReportPdfService {
     }
 
     // ── Doctor Review ─────────────────────────────────────────
-    this.sectionTitle(doc, 'Physician Review');
+    this.sectionTitle(doc, L.physicianReview);
     if (reviewedBy) {
-      this.row(doc, 'Status', record.status);
+      this.row(doc, L.status, record.status);
       if (record.doctorComment) {
-        doc.fontSize(10).font('Helvetica').text(`Comment: ${record.doctorComment}`);
+        doc.fontSize(10).font('Helvetica').text(record.doctorComment);
       }
     } else {
-      doc.fontSize(10).font('Helvetica-Oblique')
-        .text('This result is pending physician review.');
+      doc.fontSize(10).font('Helvetica-Oblique').text(L.pendingReview);
     }
     doc.moveDown(0.5);
 
     // ── Images ────────────────────────────────────────────────
-    this.addImages(doc, record);
+    this.addImages(doc, record, L);
 
     // ── Technical Details ─────────────────────────────────────
     doc.addPage();
-    this.sectionTitle(doc, 'Technical Details');
-    this.row(doc, 'Model Version', record.modelVersion);
-    this.row(doc, 'Device', record.device || '---');
-    this.row(doc, 'Confidence', `${(record.confidence * 100).toFixed(1)}%`);
-    this.row(doc, 'Threshold', `${thresh}%`);
-    this.row(doc, 'Analysis Mode', record.analysisMode || 'SINGLE_MODEL');
-    if (record.ensembleMethod) this.row(doc, 'Ensemble Method', record.ensembleMethod);
+    this.sectionTitle(doc, L.technicalDetails);
+    this.row(doc, L.modelVersion, record.modelVersion);
+    this.row(doc, L.device, record.device || '---');
+    this.row(doc, L.confidence, `${(record.confidence * 100).toFixed(1)}%`);
+    this.row(doc, L.threshold, `${thresh}%`);
+    this.row(doc, L.analysisMode, record.analysisMode || 'SINGLE_MODEL');
+    if (record.ensembleMethod) this.row(doc, L.ensembleMethod, record.ensembleMethod);
     doc.moveDown(0.5);
 
     // ── Disclaimer ────────────────────────────────────────────
     doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#ccc').stroke();
     doc.moveDown(0.3);
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#c00')
-      .text('CLINICAL DISCLAIMER', { align: 'center' });
+      .text(L.clinicalDisclaimer, { align: 'center' });
     doc.fontSize(8).font('Helvetica').fillColor('#666')
-      .text(DISCLAIMER, { align: 'center' });
+      .text(report.disclaimer, { align: 'center' });
 
     doc.end();
     return doc;
@@ -178,39 +164,36 @@ export class ReportPdfService {
       .text(value);
   }
 
-  private addImages(doc: PDFKit.PDFDocument, record: any) {
-    const images: { label: string; url: string | null }[] = [
-      { label: 'Original X-Ray', url: record.originalImageUrl },
-      { label: 'Grad-CAM Heatmap', url: record.heatmapImageUrl },
-      { label: 'Grad-CAM Overlay', url: record.overlayImageUrl },
+  private addImages(doc: PDFKit.PDFDocument, record: any, L: any) {
+    const images = [
+      { label: L.originalXray, url: record.originalImageUrl },
+      { label: L.gradcamHeatmap, url: record.heatmapImageUrl },
+      { label: L.gradcamOverlay, url: record.overlayImageUrl },
     ];
 
     const available = images.filter((img) => {
       if (!img.url) return false;
-      const filePath = this.resolveImagePath(img.url, record.hospitalId);
+      const filePath = this.resolveImagePath(img.url);
       return filePath && fs.existsSync(filePath);
     });
 
     if (available.length === 0) {
-      doc.fontSize(10).font('Helvetica-Oblique')
-        .text('No explainability images available for this analysis.');
+      doc.fontSize(10).font('Helvetica-Oblique').text(L.noImages);
       return;
     }
 
-    // Start images on a new page
     doc.addPage();
-    this.sectionTitle(doc, 'Radiological Images');
+    this.sectionTitle(doc, L.radiologicalImages);
 
     if (record.analysisMode === 'ENSEMBLE') {
       doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666')
-        .text('Grad-CAM explanation is generated from DenseNet121 default model and does not represent separate explanations for all ensemble models.');
+        .text(L.ensembleGradcamNote);
       doc.moveDown(0.3).fillColor('#000');
     }
 
     for (const img of available) {
-      const filePath = this.resolveImagePath(img.url!, record.hospitalId);
+      const filePath = this.resolveImagePath(img.url!);
       if (!filePath) continue;
-
       try {
         doc.fontSize(10).font('Helvetica-Bold').text(img.label);
         doc.moveDown(0.2);
@@ -224,18 +207,12 @@ export class ReportPdfService {
     }
   }
 
-  private resolveImagePath(url: string, hospitalId: string): string | null {
-    // Only allow paths under the uploads/ai/pneumonia directory
+  private resolveImagePath(url: string): string | null {
     if (!url.startsWith('/uploads/ai/pneumonia/')) return null;
-
     const relativePath = url.replace('/uploads/ai/pneumonia/', '');
-    // Prevent path traversal
     if (relativePath.includes('..')) return null;
-
     const fullPath = path.join(UPLOADS_BASE, relativePath);
-    // Verify the resolved path is still under UPLOADS_BASE
     if (!fullPath.startsWith(UPLOADS_BASE)) return null;
-
     return fullPath;
   }
 }

@@ -101,16 +101,18 @@ export class AiAnalysesController {
   @ApiOperation({ summary: 'Download AI analysis as PDF radiology report' })
   async downloadPdf(
     @Param('id') id: string,
+    @Query('lang') lang: string | undefined,
     @Res() res: Response,
   ) {
     const record = await this.service.findByIdForReport(id);
     const date = new Date(record.createdAt).toISOString().slice(0, 10);
     const filename = `pneumonia-ai-report-${date}-${record.id.slice(0, 8)}.pdf`;
+    const reportLang = (['en', 'ar', 'tr'].includes(lang as string) ? lang : 'en') as 'en' | 'ar' | 'tr';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    const doc = this.reportPdf.generateReport(record);
+    const doc = this.reportPdf.generateReport(record, reportLang);
     doc.pipe(res);
   }
 
