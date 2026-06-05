@@ -2,9 +2,16 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 
 /**
  * Delete all test data in correct FK order.
- * Uses multiple transactions to avoid FK constraint issues.
+ * SAFETY: Refuses to run unless DATABASE_URL contains "_test".
  */
 export async function cleanDatabase(prisma: PrismaService): Promise<void> {
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (!dbUrl.includes('hms_test') && !dbUrl.includes('_test')) {
+    throw new Error(
+      `SAFETY: Refusing to clean database — DATABASE_URL "${dbUrl}" is not a test database.`,
+    );
+  }
+
   // Layer 1: leaf tables
   await prisma.$transaction([
     prisma.refreshToken.deleteMany(),

@@ -23,6 +23,21 @@ describe('Auth - Login', () => {
     await closeTestApp();
   });
 
+  // Run rejection tests FIRST to stay within rate limit
+  it('should return 401 on wrong password', async () => {
+    await request(getApp().getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'doctor@test.com', password: 'WrongPassword' })
+      .expect(401);
+  });
+
+  it('should return 401 on nonexistent email', async () => {
+    await request(getApp().getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'nobody@test.com', password: 'Test1234!' })
+      .expect(401);
+  });
+
   it('should return 200 with user data on valid login', async () => {
     const res = await request(getApp().getHttpServer())
       .post('/api/v1/auth/login')
@@ -44,16 +59,12 @@ describe('Auth - Login', () => {
     expect(res.body.accessToken).toBeUndefined();
   });
 
-  it('should set hms_access HttpOnly cookie', async () => {
-    const { accessCookie } = await loginUser(getApp(), 'doctor@test.com', 'Test1234!');
+  it('should set hms_access and hms_refresh HttpOnly cookies', async () => {
+    const { accessCookie, refreshCookie } = await loginUser(getApp(), 'doctor@test.com', 'Test1234!');
 
     expect(accessCookie).toBeTruthy();
     expect(accessCookie).toContain('HttpOnly');
     expect(accessCookie).toContain('Path=/api');
-  });
-
-  it('should set hms_refresh HttpOnly cookie', async () => {
-    const { refreshCookie } = await loginUser(getApp(), 'doctor@test.com', 'Test1234!');
 
     expect(refreshCookie).toBeTruthy();
     expect(refreshCookie).toContain('HttpOnly');
@@ -61,26 +72,13 @@ describe('Auth - Login', () => {
   });
 
   it('should store refresh token hash in database', async () => {
-    await loginUser(getApp(), 'doctor@test.com', 'Test1234!');
-
-    const tokens = await getPrisma().refreshToken.findMany();
-    expect(tokens.length).toBeGreaterThan(0);
+    const tokens = await getPrisma().refreshToken.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 1,
+    });
+    expect(tokens.length).toBe(1);
     expect(tokens[0].tokenHash).toBeDefined();
     expect(tokens[0].familyId).toBeDefined();
     expect(tokens[0].revokedAt).toBeNull();
-  });
-
-  it('should return 401 on wrong password', async () => {
-    await request(getApp().getHttpServer())
-      .post('/api/v1/auth/login')
-      .send({ email: 'doctor@test.com', password: 'WrongPassword' })
-      .expect(401);
-  });
-
-  it('should return 401 on nonexistent email', async () => {
-    await request(getApp().getHttpServer())
-      .post('/api/v1/auth/login')
-      .send({ email: 'nobody@test.com', password: 'Test1234!' })
-      .expect(401);
   });
 });
