@@ -29,6 +29,7 @@ const TENANT_SCOPED_MODELS = new Set<Prisma.ModelName>([
   'AuditLog',
   'Holiday',
   'Setting',
+  'AIAnalysisResult',
 ]);
 
 const READ_ACTIONS = new Set<Prisma.PrismaAction>([

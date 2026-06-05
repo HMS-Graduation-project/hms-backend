@@ -52,6 +52,8 @@ model User {
   dispensings      Dispensing[]     @relation("PharmacistDispensing")
   notifications    Notification[]
   triagedEmergencyVisits EmergencyVisit[] @relation("EmergencyTriagedBy")
+  aiAnalysesRequested    AIAnalysisResult[] @relation("AIAnalysisRequestedBy")
+  aiAnalysesReviewed     AIAnalysisResult[] @relation("AIAnalysisReviewedBy")
 
   @@index([hospitalId])
   @@map("users")
@@ -136,6 +138,7 @@ model PatientProfile {
   invoices                 Invoice[]        @relation("PatientInvoices")
   emergencyVisits          EmergencyVisit[] @relation("PatientEmergencyVisits")
   admissions               Admission[]      @relation("PatientAdmissions")
+  aiAnalyses               AIAnalysisResult[] @relation("PatientAIAnalyses")
 
   @@unique([hospitalId, nationalPatientId])
   @@index([hospitalId])
@@ -648,6 +651,7 @@ model Hospital {
   admissions       Admission[]
   referralsFrom    Referral[] @relation("ReferralsFrom")
   referralsTo      Referral[] @relation("ReferralsTo")
+  aiAnalyses       AIAnalysisResult[]
 
   @@index([cityId])
   @@map("hospitals")
@@ -813,4 +817,52 @@ model Referral {
   @@index([toHospitalId, status])
   @@index([fromHospitalId, status])
   @@map("referrals")
+}
+
+// ─── AI Analysis Results ────────────────────────────────────────
+
+enum AIAnalysisStatus {
+  PENDING_REVIEW
+  REVIEWED
+  APPROVED
+  REJECTED
+}
+
+model AIAnalysisResult {
+  id               String           @id @default(uuid())
+  hospitalId       String           @map("hospital_id")
+  hospital         Hospital         @relation(fields: [hospitalId], references: [id])
+  patientProfileId String           @map("patient_profile_id")
+  patientProfile   PatientProfile   @relation("PatientAIAnalyses", fields: [patientProfileId], references: [id])
+  requestedById    String?          @map("requested_by_id")
+  requestedBy      User?            @relation("AIAnalysisRequestedBy", fields: [requestedById], references: [id])
+  reviewedById     String?          @map("reviewed_by_id")
+  reviewedBy       User?            @relation("AIAnalysisReviewedBy", fields: [reviewedById], references: [id])
+
+  analysisType     String           @map("analysis_type") // PNEUMONIA_XRAY
+  status           AIAnalysisStatus @default(PENDING_REVIEW)
+
+  originalImageUrl String?          @map("original_image_url")
+  heatmapImageUrl  String?          @map("heatmap_image_url")
+  overlayImageUrl  String?          @map("overlay_image_url")
+
+  prediction       String
+  probability      Float
+  confidence       Float
+  threshold        Float
+  riskLevel        String           @map("risk_level")
+  modelVersion     String           @map("model_version")
+  device           String?
+
+  clinicalNote     String?          @map("clinical_note")
+  doctorComment    String?          @map("doctor_comment")
+  reviewedAt       DateTime?        @map("reviewed_at")
+
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@index([hospitalId, createdAt])
+  @@index([patientProfileId, createdAt])
+  @@index([status])
+  @@map("ai_analysis_results")
 }
