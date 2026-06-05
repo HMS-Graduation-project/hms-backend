@@ -10,6 +10,7 @@ import { AiService } from '../ai/ai.service';
 import { CreatePneumoniaAnalysisDto } from './dto/create-pneumonia-analysis.dto';
 import { ReviewAiAnalysisDto } from './dto/review-ai-analysis.dto';
 import { QueryAiAnalysesDto } from './dto/query-ai-analyses.dto';
+import { QueryAiAnalyticsDto } from './dto/query-ai-analytics.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -225,5 +226,178 @@ export class AiAnalysesService {
       },
       include: INCLUDE_RELATIONS,
     });
+  }
+
+  /**
+   * Aggregated analytics for AI analyses dashboard.
+   */
+  async getAnalytics(query: QueryAiAnalyticsDto) {
+    const where: any = {};
+    if (query.analysisMode) where.analysisMode = query.analysisMode;
+    if (query.status) where.status = query.status;
+    if (query.riskLevel) where.riskLevel = query.riskLevel;
+    if (query.prediction) where.prediction = query.prediction;
+    if (query.fromDate || query.toDate) {
+      where.createdAt = {};
+      if (query.fromDate) where.createdAt.gte = new Date(query.fromDate);
+      if (query.toDate) where.createdAt.lte = new Date(query.toDate);
+    }
+
+    const records = await this.prisma.aIAnalysisResult.findMany({
+      where,
+      select: {
+        id: true,
+        prediction: true,
+        probability: true,
+        confidence: true,
+        riskLevel: true,
+        status: true,
+        analysisMode: true,
+        modelVersion: true,
+        modelAgreement: true,
+        agreementScore: true,
+        modelResultsJson: true,
+        createdAt: true,
+        reviewedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Overview
+    const total = records.length;
+    const positiveResults = records.filter((r) => r.prediction === 'PNEUMONIA').length;
+    const negativeResults = records.filter((r) => r.prediction === 'NORMAL').length;
+    const pendingReview = records.filter((r) => r.status === 'PENDING_REVIEW').length;
+    const reviewed = records.filter((r) => r.status === 'REVIEWED').length;
+    const approved = records.filter((r) => r.status === 'APPROVED').length;
+    const rejected = records.filter((r) => r.status === 'REJECTED').length;
+    const ensembleAnalyses = records.filter((r) => r.analysisMode === 'ENSEMBLE').length;
+    const singleModelAnalyses = total - ensembleAnalyses;
+
+    // Daily trend
+    const dailyMap = new Map<string, number>();
+    for (const r of records) {
+      const day = r.createdAt.toISOString().slice(0, 10);
+      dailyMap.set(day, (dailyMap.get(day) ?? 0) + 1);
+    }
+    const dailyTrend = Array.from(dailyMap.entries()).map(([date, count]) => ({ date, count }));
+    const numDays = dailyMap.size || 1;
+    const averagePerDay = Math.round((total / numDays) * 100) / 100;
+
+    // Distributions
+    const countBy = (key: string) => {
+      const map: Record<string, number> = {};
+      for (const r of records) {
+        const val = (r as any)[key] || 'UNKNOWN';
+        map[val] = (map[val] ?? 0) + 1;
+      }
+      return map;
+    };
+
+    // Clinical performance (physician-reviewed estimate)
+    const reviewedRecords = records.filter((r) => r.status === 'APPROVED' || r.status === 'REJECTED');
+    let tp = 0, fp = 0, tn = 0, fn = 0;
+    for (const r of reviewedRecords) {
+      if (r.prediction === 'PNEUMONIA' && r.status === 'APPROVED') tp++;
+      else if (r.prediction === 'PNEUMONIA' && r.status === 'REJECTED') fp++;
+      else if (r.prediction === 'NORMAL' && r.status === 'APPROVED') tn++;
+      else if (r.prediction === 'NORMAL' && r.status === 'REJECTED') fn++;
+    }
+    const totalReviewed = tp + fp + tn + fn;
+    const safeDivide = (num: number, den: number) => den > 0 ? Math.round((num / den) * 10000) / 10000 : null;
+
+    // Model performance from individual model results
+    const modelStats: Record<string, { runs: number; positive: number; negative: number; probSum: number; confSum: number }> = {};
+    const ensembleAgreement = { strong: 0, moderate: 0, low: 0, total: 0, scoreSum: 0 };
+
+    for (const r of records) {
+      // Final result model (DenseNet121 for single, Ensemble for ensemble)
+      const mName = r.analysisMode === 'ENSEMBLE' ? 'Ensemble' : 'DenseNet121';
+      if (!modelStats[mName]) modelStats[mName] = { runs: 0, positive: 0, negative: 0, probSum: 0, confSum: 0 };
+      modelStats[mName].runs++;
+      if (r.prediction === 'PNEUMONIA') modelStats[mName].positive++;
+      else modelStats[mName].negative++;
+      modelStats[mName].probSum += r.probability;
+      modelStats[mName].confSum += r.confidence;
+
+      // Ensemble agreement
+      if (r.analysisMode === 'ENSEMBLE') {
+        ensembleAgreement.total++;
+        if (r.modelAgreement === 'STRONG') ensembleAgreement.strong++;
+        else if (r.modelAgreement === 'MODERATE') ensembleAgreement.moderate++;
+        else if (r.modelAgreement === 'LOW') ensembleAgreement.low++;
+        if (r.agreementScore != null) ensembleAgreement.scoreSum += r.agreementScore;
+      }
+
+      // Individual model results from ensemble JSON
+      if (r.modelResultsJson && Array.isArray(r.modelResultsJson)) {
+        for (const m of r.modelResultsJson as any[]) {
+          const name = m.modelName as string;
+          if (!name) continue;
+          if (!modelStats[name]) modelStats[name] = { runs: 0, positive: 0, negative: 0, probSum: 0, confSum: 0 };
+          modelStats[name].runs++;
+          if (m.prediction === 'PNEUMONIA') modelStats[name].positive++;
+          else modelStats[name].negative++;
+          modelStats[name].probSum += m.probability ?? 0;
+          modelStats[name].confSum += m.confidence ?? 0;
+        }
+      }
+    }
+
+    const modelPerformance = Object.entries(modelStats).map(([modelName, s]) => ({
+      modelName,
+      totalRuns: s.runs,
+      positive: s.positive,
+      negative: s.negative,
+      averageProbability: s.runs > 0 ? Math.round((s.probSum / s.runs) * 10000) / 10000 : 0,
+      averageConfidence: s.runs > 0 ? Math.round((s.confSum / s.runs) * 10000) / 10000 : 0,
+    }));
+
+    // Add ensemble agreement stats
+    if (ensembleAgreement.total > 0) {
+      const ens = modelPerformance.find((m) => m.modelName === 'Ensemble');
+      if (ens) {
+        (ens as any).strongAgreement = Math.round((ensembleAgreement.strong / ensembleAgreement.total) * 100) / 100;
+        (ens as any).moderateAgreement = Math.round((ensembleAgreement.moderate / ensembleAgreement.total) * 100) / 100;
+        (ens as any).lowAgreement = Math.round((ensembleAgreement.low / ensembleAgreement.total) * 100) / 100;
+        (ens as any).averageAgreementScore = Math.round((ensembleAgreement.scoreSum / ensembleAgreement.total) * 100) / 100;
+      }
+    }
+
+    return {
+      overview: {
+        totalAnalyses: total,
+        positiveResults,
+        negativeResults,
+        pendingReview,
+        reviewed,
+        approved,
+        rejected,
+        ensembleAnalyses,
+        singleModelAnalyses,
+      },
+      usage: {
+        dailyTrend,
+        averagePerDay,
+      },
+      distribution: {
+        prediction: countBy('prediction'),
+        riskLevel: countBy('riskLevel'),
+        status: countBy('status'),
+        analysisMode: countBy('analysisMode'),
+      },
+      clinicalPerformance: {
+        reviewedRecords: totalReviewed,
+        truePositive: tp,
+        falsePositive: fp,
+        trueNegative: tn,
+        falseNegative: fn,
+        sensitivityEstimate: safeDivide(tp, tp + fn),
+        specificityEstimate: safeDivide(tn, tn + fp),
+        precisionEstimate: safeDivide(tp, tp + fp),
+        accuracyEstimate: safeDivide(tp + tn, totalReviewed),
+      },
+      modelPerformance,
+    };
   }
 }

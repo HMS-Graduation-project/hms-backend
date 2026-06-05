@@ -25,6 +25,7 @@ import { AiAnalysesService } from './ai-analyses.service';
 import { CreatePneumoniaAnalysisDto } from './dto/create-pneumonia-analysis.dto';
 import { ReviewAiAnalysisDto } from './dto/review-ai-analysis.dto';
 import { QueryAiAnalysesDto } from './dto/query-ai-analyses.dto';
+import { QueryAiAnalyticsDto } from './dto/query-ai-analytics.dto';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -73,6 +74,13 @@ export class AiAnalysesController {
   @ApiOperation({ summary: 'List AI analyses with filters and pagination' })
   async findAll(@Query() query: QueryAiAnalysesDto) {
     return this.service.findAll(query);
+  }
+
+  @Get('analytics')
+  @Roles(Role.DOCTOR, Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get aggregated AI analytics metrics' })
+  async getAnalytics(@Query() query: QueryAiAnalyticsDto) {
+    return this.service.getAnalytics(query);
   }
 
   @Get(':id')
