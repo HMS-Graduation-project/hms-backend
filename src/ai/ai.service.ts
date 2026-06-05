@@ -150,6 +150,43 @@ export class AiService {
     }
   }
 
+  async pneumoniaEnsemble(
+    file: Express.Multer.File,
+    includeGradcam: boolean = false,
+  ): Promise<unknown> {
+    this.validateXrayFile(file);
+    try {
+      const form = this.buildFormData(file);
+      form.append('includeGradcam', String(includeGradcam));
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/api/v1/ai/pneumonia/ensemble`,
+          form,
+          {
+            headers: form.getHeaders(),
+            maxContentLength: 15_000_000,
+            timeout: 120_000, // 3 models + optional Grad-CAM
+          },
+        ),
+      );
+      return response.data;
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof PayloadTooLargeException
+      ) {
+        throw error;
+      }
+      this.logger.error(
+        `AI pneumonia-ensemble call failed: ${error.message}`,
+        error.stack,
+      );
+      throw new ServiceUnavailableException(
+        'Pneumonia AI ensemble service is currently unavailable. Please try again later.',
+      );
+    }
+  }
+
   async pneumoniaExplain(file: Express.Multer.File): Promise<unknown> {
     this.validateXrayFile(file);
     try {

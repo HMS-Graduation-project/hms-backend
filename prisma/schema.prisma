@@ -854,6 +854,14 @@ model AIAnalysisResult {
   modelVersion     String           @map("model_version")
   device           String?
 
+  // Ensemble fields
+  analysisMode     String?          @map("analysis_mode")       // SINGLE_MODEL | ENSEMBLE
+  ensembleMethod   String?          @map("ensemble_method")     // WEIGHTED_AVERAGE
+  modelAgreement   String?          @map("model_agreement")     // STRONG | MODERATE | LOW
+  agreementScore   Float?           @map("agreement_score")
+  modelResultsJson Json?            @map("model_results_json")
+  ensembleWeightsJson Json?         @map("ensemble_weights_json")
+
   clinicalNote     String?          @map("clinical_note")
   doctorComment    String?          @map("doctor_comment")
   reviewedAt       DateTime?        @map("reviewed_at")

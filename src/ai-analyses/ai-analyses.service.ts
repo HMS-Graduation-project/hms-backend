@@ -62,9 +62,12 @@ export class AiAnalysesService {
     }
 
     // Call AI service
+    const isEnsemble = dto.analysisMode === 'ENSEMBLE';
     let aiResult: any;
     try {
-      if (dto.includeGradcam) {
+      if (isEnsemble) {
+        aiResult = await this.aiService.pneumoniaEnsemble(file, dto.includeGradcam ?? true);
+      } else if (dto.includeGradcam) {
         aiResult = await this.aiService.pneumoniaExplain(file);
       } else {
         aiResult = await this.aiService.pneumoniaPredict(file);
@@ -86,10 +89,19 @@ export class AiAnalysesService {
         probability: aiResult.probability,
         confidence: aiResult.confidence,
         threshold: aiResult.threshold,
-        riskLevel: riskLevel(aiResult.probability, aiResult.threshold),
+        riskLevel: isEnsemble
+          ? (aiResult.riskLevel || riskLevel(aiResult.probability, aiResult.threshold))
+          : riskLevel(aiResult.probability, aiResult.threshold),
         modelVersion: aiResult.modelVersion || 'unknown',
         device: aiResult.device || 'unknown',
         clinicalNote: aiResult.clinicalNote || null,
+        // Ensemble fields
+        analysisMode: isEnsemble ? 'ENSEMBLE' : 'SINGLE_MODEL',
+        ensembleMethod: isEnsemble ? aiResult.ensemble?.method || null : null,
+        modelAgreement: isEnsemble ? aiResult.ensemble?.modelAgreement || null : null,
+        agreementScore: isEnsemble ? aiResult.ensemble?.agreementScore ?? null : null,
+        modelResultsJson: isEnsemble ? aiResult.ensemble?.models || null : null,
+        ensembleWeightsJson: isEnsemble ? aiResult.ensemble?.weights || null : null,
       },
     });
 
