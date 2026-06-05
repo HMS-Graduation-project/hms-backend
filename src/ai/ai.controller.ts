@@ -87,4 +87,19 @@ export class AiController {
   ) {
     return this.aiService.pneumoniaExplain(file);
   }
+
+  @Post('pneumonia/ensemble')
+  @Roles(Role.DOCTOR, Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Ensemble prediction: DenseNet121 + EfficientNet-B0 + ResNet50',
+    description:
+      'Upload a chest X-ray. Runs 3 models with weighted average consensus and optional Grad-CAM from DenseNet121.',
+  })
+  async pneumoniaEnsemble(
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.aiService.pneumoniaEnsemble(file, true);
+  }
 }
