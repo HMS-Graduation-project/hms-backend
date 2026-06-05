@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter, PrismaExceptionFilter } from './common/filters';
@@ -18,6 +19,7 @@ async function bootstrap() {
 
   // Security headers
   app.use(helmet());
+  app.use(cookieParser());
 
   // Serve uploaded files as static assets at /uploads/*
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
@@ -45,9 +47,9 @@ async function bootstrap() {
     new HttpExceptionFilter(),
   );
 
-  // CORS with configurable origin
+  // CORS with configurable origin (explicit origin required for cookie credentials)
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     credentials: true,
   });
 

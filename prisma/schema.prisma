@@ -54,9 +54,29 @@ model User {
   triagedEmergencyVisits EmergencyVisit[] @relation("EmergencyTriagedBy")
   aiAnalysesRequested    AIAnalysisResult[] @relation("AIAnalysisRequestedBy")
   aiAnalysesReviewed     AIAnalysisResult[] @relation("AIAnalysisReviewedBy")
+  refreshTokens          RefreshToken[]
 
   @@index([hospitalId])
   @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @map("token_hash")
+  familyId    String    @map("family_id")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  replacedBy  String?   @map("replaced_by")
+  userAgent   String?   @map("user_agent")
+  ipAddress   String?   @map("ip_address")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
 }
 
 model Department {
