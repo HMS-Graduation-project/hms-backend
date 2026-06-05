@@ -191,6 +191,21 @@ export class AiAnalysesService {
   }
 
   /**
+   * Get single AI analysis with hospital info (for PDF report).
+   */
+  async findByIdForReport(id: string) {
+    const record = await this.prisma.aIAnalysisResult.findUnique({
+      where: { id },
+      include: {
+        ...INCLUDE_RELATIONS,
+        hospital: { select: { id: true, name: true, nameAr: true, code: true } },
+      },
+    });
+    if (!record) throw new NotFoundException('AI analysis not found');
+    return record;
+  }
+
+  /**
    * Doctor reviews an AI analysis result.
    */
   async review(

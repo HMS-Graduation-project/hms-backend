@@ -6,10 +6,12 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -22,6 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
 import { AiAnalysesService } from './ai-analyses.service';
+import { ReportPdfService } from './pdf/report-pdf.service';
 import { CreatePneumoniaAnalysisDto } from './dto/create-pneumonia-analysis.dto';
 import { ReviewAiAnalysisDto } from './dto/review-ai-analysis.dto';
 import { QueryAiAnalysesDto } from './dto/query-ai-analyses.dto';
@@ -34,7 +37,10 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 @ApiBearerAuth()
 @Controller('ai-analyses')
 export class AiAnalysesController {
-  constructor(private readonly service: AiAnalysesService) {}
+  constructor(
+    private readonly service: AiAnalysesService,
+    private readonly reportPdf: ReportPdfService,
+  ) {}
 
   @Post('pneumonia')
   @Roles(Role.DOCTOR, Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
@@ -88,6 +94,24 @@ export class AiAnalysesController {
   @ApiOperation({ summary: 'Get AI analysis detail' })
   async findOne(@Param('id') id: string) {
     return this.service.findById(id);
+  }
+
+  @Get(':id/report/pdf')
+  @Roles(Role.DOCTOR, Role.ADMIN, Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Download AI analysis as PDF radiology report' })
+  async downloadPdf(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const record = await this.service.findByIdForReport(id);
+    const date = new Date(record.createdAt).toISOString().slice(0, 10);
+    const filename = `pneumonia-ai-report-${date}-${record.id.slice(0, 8)}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const doc = this.reportPdf.generateReport(record);
+    doc.pipe(res);
   }
 
   @Patch(':id/review')
