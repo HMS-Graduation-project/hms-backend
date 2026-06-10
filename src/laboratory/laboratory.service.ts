@@ -20,9 +20,28 @@ const USER_SELECT = {
   avatar: true,
 } as const;
 
+/**
+ * NationalPatient identity fields — the demographics source-of-truth.
+ * A PatientProfile always has a NationalPatient but may have no User
+ * (staff-created patients with no login), so names must come from here.
+ */
+const NATIONAL_PATIENT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  firstNameAr: true,
+  lastNameAr: true,
+  syrianNationalId: true,
+} as const;
+
 /** Standard include clause for lab order queries. */
 const LAB_ORDER_INCLUDE = {
-  patient: { include: { user: { select: USER_SELECT } } },
+  patient: {
+    include: {
+      nationalPatient: { select: NATIONAL_PATIENT_SELECT },
+      user: { select: USER_SELECT },
+    },
+  },
   doctor: { include: { user: { select: USER_SELECT } } },
   result: {
     include: {
@@ -34,6 +53,17 @@ const LAB_ORDER_INCLUDE = {
       id: true,
       appointmentId: true,
       diagnosis: true,
+    },
+  },
+  hospital: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      nameAr: true,
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
     },
   },
 } as const;
@@ -55,15 +85,23 @@ export class LaboratoryService {
       where.priority = query.priority;
     }
 
+    // Organizational scope filters (Governorate → Hospital).
+    if (query.hospitalId) {
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      where.hospital = { city: { governorate: query.governorate } };
+    }
+
     if (query.search) {
       where.OR = [
         { testName: { contains: query.search, mode: 'insensitive' } },
         {
           patient: {
-            user: {
+            nationalPatient: {
               OR: [
                 { firstName: { contains: query.search, mode: 'insensitive' } },
                 { lastName: { contains: query.search, mode: 'insensitive' } },
+                { syrianNationalId: { contains: query.search } },
               ],
             },
           },

@@ -48,7 +48,7 @@ export class InpatientController {
   )
   @ApiOperation({ summary: 'List wards at the current hospital' })
   listWards(@CurrentUser() user: AuthUser) {
-    return this.service.listWards(user.hospitalId!);
+    return this.service.listWards(user.hospitalId);
   }
 
   @Get('wards/:id')
@@ -65,7 +65,7 @@ export class InpatientController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.service.getWard(id, user.hospitalId!);
+    return this.service.getWard(id, user.hospitalId);
   }
 
   @Post('wards')
@@ -103,7 +103,7 @@ export class InpatientController {
     @Query('wardId') wardId?: string,
     @Query('status') status?: BedStatus,
   ) {
-    return this.service.listBeds(user.hospitalId!, wardId, status);
+    return this.service.listBeds(user.hospitalId, wardId, status);
   }
 
   @Post('beds')
@@ -140,7 +140,7 @@ export class InpatientController {
     @Query() query: AdmissionQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.service.listAdmissions(query, user.hospitalId!);
+    return this.service.listAdmissions(query, user.hospitalId);
   }
 
   @Get('admissions/:id')
@@ -157,7 +157,7 @@ export class InpatientController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.service.getAdmission(id, user.hospitalId!);
+    return this.service.getAdmission(id, user.hospitalId);
   }
 
   @Post('admissions')

@@ -27,6 +27,15 @@ export class AiController {
 
   // ──────────────────── Symptom / Drug (existing) ────────────────────
 
+  @Get('symptoms')
+  @Roles(Role.DOCTOR, Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'List the symptom catalog (id + label) for the symptom checker',
+  })
+  async listSymptoms() {
+    return this.aiService.getSymptoms();
+  }
+
   @Post('predict-disease')
   @Roles(Role.DOCTOR, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({

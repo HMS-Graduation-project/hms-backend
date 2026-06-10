@@ -60,6 +60,20 @@ export class DepartmentsController {
     );
   }
 
+  @Get('grouped')
+  @ApiOperation({
+    summary: 'List departments grouped by governorate → hospital',
+  })
+  async findGrouped(@CurrentUser() currentUser: AuthUser) {
+    const isAdmin =
+      currentUser.role === Role.ADMIN || currentUser.role === Role.SUPER_ADMIN;
+    return this.departmentsService.findGrouped(
+      isAdmin,
+      currentUser.hospitalId,
+      currentUser.cityId,
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a department by ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {

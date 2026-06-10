@@ -50,6 +50,27 @@ export class AiService {
     }
   }
 
+  /**
+   * Returns the AI service's symptom catalogue ({ id, label }) so the
+   * frontend symptom checker submits canonical ids rather than display text.
+   */
+  async getSymptoms(): Promise<unknown> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.baseUrl}/symptoms`),
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `AI symptoms call failed: ${error.message}`,
+        error.stack,
+      );
+      throw new ServiceUnavailableException(
+        'AI service is currently unavailable. Please try again later.',
+      );
+    }
+  }
+
   async checkDrugInteractions(medications: string[]): Promise<unknown> {
     try {
       const response = await firstValueFrom(

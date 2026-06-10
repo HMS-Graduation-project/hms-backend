@@ -47,8 +47,9 @@ export class EmergencyController {
     @Query() query: EmergencyQueryDto,
     @CurrentUser() user: AuthUser,
   ) {
-    // TODO P2: proper guard — SUPER_ADMIN shouldn't need to hit this endpoint without a hospital context
-    return this.service.findAll(query, user.hospitalId!);
+    // National-scope users (SUPER_ADMIN, hospitalId = null) see all hospitals;
+    // hospital-scoped users are restricted to their own hospital.
+    return this.service.findAll(query, user.hospitalId);
   }
 
   @Get(':id')
@@ -65,7 +66,7 @@ export class EmergencyController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.service.findById(id, user.hospitalId!);
+    return this.service.findById(id, user.hospitalId);
   }
 
   @Post()

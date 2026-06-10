@@ -18,6 +18,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/strategies/jwt.strategy';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { MedicalRecordQueryDto } from './dto/medical-record-query.dto';
 import { CreateMedicalRecordDto } from './dto/create-medical-record.dto';
 import { UpdateMedicalRecordDto } from './dto/update-medical-record.dto';
 import { CreateVitalSignsDto } from './dto/create-vital-signs.dto';
@@ -32,7 +33,7 @@ export class MedicalRecordsController {
   @Get('medical-records')
   @Roles(Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'List all medical records (paginated)' })
-  async findAll(@Query() query: PaginationQueryDto) {
+  async findAll(@Query() query: MedicalRecordQueryDto) {
     return this.medicalRecordsService.findAll(query);
   }
 

@@ -8,6 +8,7 @@ import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/utils/pagination.util';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { MedicalRecordQueryDto } from './dto/medical-record-query.dto';
 import { CreateMedicalRecordDto } from './dto/create-medical-record.dto';
 import { UpdateMedicalRecordDto } from './dto/update-medical-record.dto';
 import { CreateVitalSignsDto } from './dto/create-vital-signs.dto';
@@ -20,6 +21,28 @@ const USER_SELECT = {
   lastName: true,
   phone: true,
   avatar: true,
+} as const;
+
+/**
+ * NationalPatient identity fields — the demographics source-of-truth.
+ * A PatientProfile always has a NationalPatient but may have no User
+ * (staff-created patients with no login), so names must come from here.
+ */
+const NATIONAL_PATIENT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  firstNameAr: true,
+  lastNameAr: true,
+  syrianNationalId: true,
+} as const;
+
+/** Reusable patient include: demographics (always) + login account (if any). */
+const PATIENT_INCLUDE = {
+  include: {
+    nationalPatient: { select: NATIONAL_PATIENT_SELECT },
+    user: { select: USER_SELECT },
+  },
 } as const;
 
 @Injectable()
@@ -94,7 +117,7 @@ export class MedicalRecordsService {
       },
       include: {
         appointment: true,
-        patient: { include: { user: { select: USER_SELECT } } },
+        patient: PATIENT_INCLUDE,
         doctor: { include: { user: { select: USER_SELECT } } },
         vitalSigns: true,
         prescriptions: { include: { items: true } },
@@ -104,18 +127,27 @@ export class MedicalRecordsService {
 
   // ───────────────────── Find all (paginated) ─────────────────────────────
 
-  async findAll(query: PaginationQueryDto) {
+  async findAll(query: MedicalRecordQueryDto) {
     const where: Record<string, unknown> = {};
 
     if (query.search) {
       where.OR = [
         { diagnosis: { contains: query.search, mode: 'insensitive' } },
         { chiefComplaint: { contains: query.search, mode: 'insensitive' } },
-        { patient: { user: { OR: [
+        { patient: { nationalPatient: { OR: [
           { firstName: { contains: query.search, mode: 'insensitive' } },
           { lastName: { contains: query.search, mode: 'insensitive' } },
+          { syrianNationalId: { contains: query.search } },
         ] } } },
       ];
+    }
+
+    // Organizational scope filters (Governorate → Hospital). A chosen
+    // hospital is more specific than a governorate, so it takes precedence.
+    if (query.hospitalId) {
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      where.hospital = { city: { governorate: query.governorate } };
     }
 
     return paginate(
@@ -124,8 +156,19 @@ export class MedicalRecordsService {
         where,
         include: {
           appointment: { select: { date: true, startTime: true } },
-          patient: { include: { user: { select: USER_SELECT } } },
+          patient: PATIENT_INCLUDE,
           doctor: { include: { user: { select: USER_SELECT } } },
+          hospital: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              nameAr: true,
+              city: {
+                select: { id: true, name: true, nameAr: true, governorate: true },
+              },
+            },
+          },
         },
       },
       query,
@@ -139,7 +182,7 @@ export class MedicalRecordsService {
       where: { id },
       include: {
         appointment: true,
-        patient: { include: { user: { select: USER_SELECT } } },
+        patient: PATIENT_INCLUDE,
         doctor: { include: { user: { select: USER_SELECT } } },
         vitalSigns: true,
         prescriptions: { include: { items: true } },
@@ -178,7 +221,7 @@ export class MedicalRecordsService {
       },
       include: {
         appointment: true,
-        patient: { include: { user: { select: USER_SELECT } } },
+        patient: PATIENT_INCLUDE,
         doctor: { include: { user: { select: USER_SELECT } } },
         vitalSigns: true,
         prescriptions: { include: { items: true } },

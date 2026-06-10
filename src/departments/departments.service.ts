@@ -60,6 +60,133 @@ export class DepartmentsService {
     );
   }
 
+  // ───────────────────── Grouped (governorate → hospital) ─────────────────────
+
+  /**
+   * Return departments as a hierarchy: governorate → hospital → departments.
+   * Intended for national / regional scope (SUPER_ADMIN, MINISTRY, REGIONAL)
+   * where the flat list mixes identically-named departments from many
+   * hospitals together.
+   *
+   * @param isAdmin     When true, inactive departments are included
+   * @param hospitalId  When set, scope to a single hospital
+   * @param cityId      When set (and no hospitalId), scope to one city
+   */
+  async findGrouped(
+    isAdmin = false,
+    hospitalId: string | null = null,
+    cityId: string | null = null,
+  ) {
+    const where: Record<string, unknown> = {};
+
+    if (!isAdmin) {
+      where.isActive = true;
+    }
+
+    if (hospitalId) {
+      where.hospitalId = hospitalId;
+    } else if (cityId) {
+      where.hospital = { cityId };
+    }
+
+    const departments = await (this.prisma.department as any).findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: {
+        headDoctor: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        _count: { select: { doctors: true } },
+        hospital: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            code: true,
+            city: {
+              select: {
+                id: true,
+                name: true,
+                nameAr: true,
+                governorate: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // governorate name → (hospital id → hospital node)
+    const govMap = new Map<string, Map<string, any>>();
+
+    for (const dept of departments) {
+      const { hospital, ...deptFields } = dept;
+      const gov =
+        hospital.city?.governorate || hospital.city?.name || 'Unknown';
+
+      if (!govMap.has(gov)) {
+        govMap.set(gov, new Map());
+      }
+      const hospitalMap = govMap.get(gov)!;
+
+      if (!hospitalMap.has(hospital.id)) {
+        hospitalMap.set(hospital.id, {
+          id: hospital.id,
+          name: hospital.name,
+          nameAr: hospital.nameAr,
+          code: hospital.code,
+          city: hospital.city
+            ? {
+                id: hospital.city.id,
+                name: hospital.city.name,
+                nameAr: hospital.city.nameAr,
+              }
+            : null,
+          departmentCount: 0,
+          doctorCount: 0,
+          departments: [] as any[],
+        });
+      }
+
+      const hospitalNode = hospitalMap.get(hospital.id)!;
+      const doctorCount = dept._count?.doctors ?? 0;
+      hospitalNode.departments.push(deptFields);
+      hospitalNode.departmentCount += 1;
+      hospitalNode.doctorCount += doctorCount;
+    }
+
+    const governorates = [...govMap.entries()]
+      .map(([governorate, hospitalMap]) => {
+        const hospitals = [...hospitalMap.values()].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        return {
+          governorate,
+          hospitalCount: hospitals.length,
+          departmentCount: hospitals.reduce(
+            (sum, h) => sum + h.departmentCount,
+            0,
+          ),
+          doctorCount: hospitals.reduce((sum, h) => sum + h.doctorCount, 0),
+          hospitals,
+        };
+      })
+      .sort((a, b) => a.governorate.localeCompare(b.governorate));
+
+    return {
+      governorates,
+      totals: {
+        governorateCount: governorates.length,
+        hospitalCount: governorates.reduce((s, g) => s + g.hospitalCount, 0),
+        departmentCount: governorates.reduce(
+          (s, g) => s + g.departmentCount,
+          0,
+        ),
+        doctorCount: governorates.reduce((s, g) => s + g.doctorCount, 0),
+      },
+    };
+  }
+
   // ───────────────────── Single ──────────────────────────────────────────────
 
   /**

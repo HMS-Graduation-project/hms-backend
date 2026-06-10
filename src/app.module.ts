@@ -39,7 +39,7 @@ import { AuditInterceptor, RequestContextInterceptor } from './common/intercepto
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 5000 }]),
     LoggerModule.forRoot({
       pinoHttp: {
         transport:

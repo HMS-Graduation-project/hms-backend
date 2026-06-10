@@ -1,18 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PrescriptionStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-export class PrescriptionQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional({
-    description: 'Filter by prescription status',
-    enum: PrescriptionStatus,
-    example: PrescriptionStatus.PENDING,
-  })
-  @IsOptional()
-  @IsEnum(PrescriptionStatus)
-  status?: PrescriptionStatus;
-
+/**
+ * Query params for the medical-records list. Extends pagination/search with
+ * national-scope organizational filters (Governorate → Hospital).
+ */
+export class MedicalRecordQueryDto extends PaginationQueryDto {
   /** National scope only — filter by the hospital's governorate. */
   @ApiPropertyOptional({ description: "Filter by the hospital's governorate" })
   @IsOptional()

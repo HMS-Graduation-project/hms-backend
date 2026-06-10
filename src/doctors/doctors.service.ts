@@ -33,6 +33,13 @@ const USER_SELECT = {
 const DEFAULT_INCLUDE = {
   user: { select: USER_SELECT },
   department: { select: { id: true, name: true } },
+  hospital: {
+    select: {
+      id: true,
+      name: true,
+      city: { select: { id: true, name: true } },
+    },
+  },
 } as const;
 
 @Injectable()

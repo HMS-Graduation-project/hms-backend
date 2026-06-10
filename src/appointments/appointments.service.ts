@@ -12,10 +12,25 @@ import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto'
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { AppointmentQueryDto } from './dto/appointment-query.dto';
 
+/**
+ * NationalPatient identity fields — the demographics source-of-truth.
+ * A PatientProfile always has a NationalPatient but may have no User
+ * (staff-created patients with no login), so names must come from here.
+ */
+const NATIONAL_PATIENT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  firstNameAr: true,
+  lastNameAr: true,
+  syrianNationalId: true,
+} as const;
+
 /** Reusable include clause for appointment queries. */
 const APPOINTMENT_INCLUDE = {
   patient: {
     include: {
+      nationalPatient: { select: NATIONAL_PATIENT_SELECT },
       user: {
         select: {
           id: true,
@@ -42,6 +57,16 @@ const APPOINTMENT_INCLUDE = {
     },
   },
   department: { select: { id: true, name: true } },
+  hospital: {
+    select: {
+      id: true,
+      name: true,
+      nameAr: true,
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
+    },
+  },
 };
 
 /** Full include for single-appointment detail (adds medicalRecord). */
@@ -109,6 +134,18 @@ export class AppointmentsService {
       if (currentUser.role !== Role.PATIENT) {
         where.patientId = query.patientId;
       }
+    }
+
+    // Organizational scope filters (Governorate → Hospital → Department).
+    // Hospital is more specific than governorate, so a chosen hospital
+    // supersedes the governorate filter.
+    if (query.hospitalId) {
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      where.hospital = { city: { governorate: query.governorate } };
+    }
+    if (query.departmentId) {
+      where.departmentId = query.departmentId;
     }
 
     if (query.dateFrom || query.dateTo) {

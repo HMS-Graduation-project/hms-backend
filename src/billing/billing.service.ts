@@ -22,13 +22,46 @@ const USER_SELECT = {
   avatar: true,
 } as const;
 
+/**
+ * NationalPatient identity fields — the demographics source-of-truth.
+ * A PatientProfile always has a NationalPatient but may have no User
+ * (staff-created patients with no login), so names must come from here.
+ */
+const NATIONAL_PATIENT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  firstNameAr: true,
+  lastNameAr: true,
+  syrianNationalId: true,
+} as const;
+
+/** Reusable patient include: demographics (always) + login account (if any). */
+const PATIENT_INCLUDE = {
+  include: {
+    nationalPatient: { select: NATIONAL_PATIENT_SELECT },
+    user: { select: USER_SELECT },
+  },
+} as const;
+
 /** Standard includes used by most read operations. */
 const INVOICE_INCLUDE = {
   items: true,
   payments: true,
-  patient: { include: { user: { select: USER_SELECT } } },
+  patient: PATIENT_INCLUDE,
   appointment: {
     select: { id: true, date: true, type: true, startTime: true },
+  },
+  hospital: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      nameAr: true,
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
+    },
   },
   _count: { select: { items: true, payments: true } },
 } as const;
@@ -50,15 +83,23 @@ export class BillingService {
       where.patientId = query.patientId;
     }
 
+    // Organizational scope filters (Governorate → Hospital).
+    if (query.hospitalId) {
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      where.hospital = { city: { governorate: query.governorate } };
+    }
+
     if (query.search) {
       where.OR = [
         { invoiceNumber: { contains: query.search, mode: 'insensitive' } },
         {
           patient: {
-            user: {
+            nationalPatient: {
               OR: [
                 { firstName: { contains: query.search, mode: 'insensitive' } },
                 { lastName: { contains: query.search, mode: 'insensitive' } },
+                { syrianNationalId: { contains: query.search } },
               ],
             },
           },
@@ -88,6 +129,7 @@ export class BillingService {
         ...INVOICE_INCLUDE,
         patient: {
           include: {
+            nationalPatient: { select: NATIONAL_PATIENT_SELECT },
             user: { select: { ...USER_SELECT, role: true } },
           },
         },

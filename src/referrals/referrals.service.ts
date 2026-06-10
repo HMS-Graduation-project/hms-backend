@@ -50,7 +50,9 @@ const REFERRAL_INCLUDE = {
       code: true,
       name: true,
       nameAr: true,
-      city: { select: { id: true, name: true } },
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
     },
   },
   toHospital: {
@@ -59,7 +61,9 @@ const REFERRAL_INCLUDE = {
       code: true,
       name: true,
       nameAr: true,
-      city: { select: { id: true, name: true } },
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
     },
   },
   fromDoctor: {
@@ -118,15 +122,24 @@ export class ReferralsService {
     query: ReferralQueryDto,
     user: AuthUser,
   ) {
-    if (!user.hospitalId) {
-      throw new ForbiddenException(
-        'Caller must be scoped to a hospital to list referrals',
-      );
+    const sideKey =
+      direction === 'incoming' ? 'toHospitalId' : 'fromHospitalId';
+    const sideRel = direction === 'incoming' ? 'toHospital' : 'fromHospital';
+
+    // Hospital-scoped callers see only their side. National-scope callers
+    // (SUPER_ADMIN, hospitalId = null) see all referrals and may optionally
+    // drill down by hospital or governorate on the viewed side.
+    let scope: Prisma.ReferralWhereInput = {};
+    if (user.hospitalId) {
+      scope = { [sideKey]: user.hospitalId };
+    } else if (query.hospitalId) {
+      scope = { [sideKey]: query.hospitalId };
+    } else if (query.governorate) {
+      scope = { [sideRel]: { city: { governorate: query.governorate } } };
     }
 
     const where: Prisma.ReferralWhereInput = {
-      [direction === 'incoming' ? 'toHospitalId' : 'fromHospitalId']:
-        user.hospitalId,
+      ...scope,
       ...(query.status ? { status: query.status } : {}),
       ...(query.urgency ? { urgency: query.urgency } : {}),
     };
@@ -406,7 +419,9 @@ export class ReferralsService {
             code: true,
             name: true,
             nameAr: true,
-            city: { select: { id: true, name: true } },
+            city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
           },
         },
         medicalRecords: {

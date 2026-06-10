@@ -21,6 +21,17 @@ import { DischargeAdmissionDto } from './dto/discharge.dto';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
 
 const ADMISSION_INCLUDE = {
+  hospital: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      nameAr: true,
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
+    },
+  },
   patientProfile: {
     select: {
       id: true,
@@ -96,20 +107,29 @@ export class InpatientService {
 
   // ───────────────────── Wards ─────────────────────────────────────────
 
-  async listWards(hospitalId: string) {
+  async listWards(hospitalId: string | null) {
     return this.prisma.ward.findMany({
-      where: { hospitalId },
+      // National-scope callers (hospitalId = null) see wards at every hospital.
+      where: hospitalId ? { hospitalId } : {},
       include: {
         department: { select: { id: true, name: true } },
+        hospital: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            city: { select: { id: true, name: true, governorate: true } },
+          },
+        },
         _count: { select: { beds: true } },
       },
       orderBy: [{ name: 'asc' }],
     });
   }
 
-  async getWard(id: string, hospitalId: string) {
+  async getWard(id: string, hospitalId: string | null) {
     const ward = await this.prisma.ward.findFirst({
-      where: { id, hospitalId },
+      where: hospitalId ? { id, hospitalId } : { id },
       include: {
         department: { select: { id: true, name: true } },
         beds: {
@@ -189,10 +209,10 @@ export class InpatientService {
 
   // ───────────────────── Beds ──────────────────────────────────────────
 
-  async listBeds(hospitalId: string, wardId?: string, status?: BedStatus) {
+  async listBeds(hospitalId: string | null, wardId?: string, status?: BedStatus) {
     return this.prisma.bed.findMany({
       where: {
-        hospitalId,
+        ...(hospitalId ? { hospitalId } : {}),
         ...(wardId ? { wardId } : {}),
         ...(status ? { status } : {}),
       },
@@ -276,8 +296,20 @@ export class InpatientService {
 
   // ───────────────────── Admissions ────────────────────────────────────
 
-  async listAdmissions(query: AdmissionQueryDto, hospitalId: string) {
-    const where: Prisma.AdmissionWhereInput = { hospitalId };
+  async listAdmissions(query: AdmissionQueryDto, hospitalId: string | null) {
+    const where: Prisma.AdmissionWhereInput = {};
+
+    if (hospitalId) {
+      // Hospital-scoped caller: restricted to their own hospital.
+      where.hospitalId = hospitalId;
+    } else if (query.hospitalId) {
+      // National scope, drilled down to a specific hospital.
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      // National scope, filtered by governorate.
+      where.hospital = { city: { governorate: query.governorate } };
+    }
+
     if (query.status) {
       where.status = query.status;
     } else {
@@ -306,9 +338,9 @@ export class InpatientService {
     };
   }
 
-  async getAdmission(id: string, hospitalId: string) {
+  async getAdmission(id: string, hospitalId: string | null) {
     const adm = await this.prisma.admission.findFirst({
-      where: { id, hospitalId },
+      where: hospitalId ? { id, hospitalId } : { id },
       include: ADMISSION_INCLUDE,
     });
     if (!adm) throw new NotFoundException(`Admission "${id}" not found`);

@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { AppointmentStatus } from '@prisma/client';
-import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 export class AppointmentQueryDto extends PaginationQueryDto {
@@ -12,6 +18,30 @@ export class AppointmentQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(AppointmentStatus)
   status?: AppointmentStatus;
+
+  @ApiPropertyOptional({
+    description: "Filter by governorate (the hospital's city governorate)",
+    example: 'Damascus',
+  })
+  @IsOptional()
+  @IsString()
+  governorate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by hospital UUID',
+    example: 'c3d4e5f6-a7b8-9012-cdef-123456789012',
+  })
+  @IsOptional()
+  @IsUUID()
+  hospitalId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by department UUID',
+    example: 'd4e5f6a7-b8c9-0123-def1-234567890123',
+  })
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
 
   @ApiPropertyOptional({
     description: 'Filter by doctor profile UUID',

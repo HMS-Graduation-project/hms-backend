@@ -49,6 +49,17 @@ const VISIT_INCLUDE = {
       specialization: true,
     },
   },
+  hospital: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      nameAr: true,
+      city: {
+        select: { id: true, name: true, nameAr: true, governorate: true },
+      },
+    },
+  },
   medicalRecord: { select: { id: true } },
 } as const;
 
@@ -71,8 +82,19 @@ export class EmergencyService {
 
   // ───────────────────── Queue / List ───────────────────────────────────
 
-  async findAll(query: EmergencyQueryDto, hospitalId: string) {
-    const where: Prisma.EmergencyVisitWhereInput = { hospitalId };
+  async findAll(query: EmergencyQueryDto, hospitalId: string | null) {
+    const where: Prisma.EmergencyVisitWhereInput = {};
+
+    if (hospitalId) {
+      // Hospital-scoped caller: restricted to their own hospital.
+      where.hospitalId = hospitalId;
+    } else if (query.hospitalId) {
+      // National scope, drilled down to a specific hospital.
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      // National scope, filtered by governorate.
+      where.hospital = { city: { governorate: query.governorate } };
+    }
 
     if (query.status) {
       where.status = query.status;
@@ -114,9 +136,10 @@ export class EmergencyService {
     };
   }
 
-  async findById(id: string, hospitalId: string) {
+  async findById(id: string, hospitalId: string | null) {
     const visit = await this.prisma.emergencyVisit.findFirst({
-      where: { id, hospitalId },
+      // National-scope callers (hospitalId = null) may view any visit.
+      where: hospitalId ? { id, hospitalId } : { id },
       include: VISIT_INCLUDE,
     });
     if (!visit) {

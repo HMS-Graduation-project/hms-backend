@@ -19,6 +19,28 @@ const USER_SELECT = {
   avatar: true,
 } as const;
 
+/**
+ * NationalPatient identity fields — the demographics source-of-truth.
+ * A PatientProfile always has a NationalPatient but may have no User
+ * (staff-created patients with no login), so names must come from here.
+ */
+const NATIONAL_PATIENT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  firstNameAr: true,
+  lastNameAr: true,
+  syrianNationalId: true,
+} as const;
+
+/** Reusable patient include: demographics (always) + login account (if any). */
+const PATIENT_INCLUDE = {
+  include: {
+    nationalPatient: { select: NATIONAL_PATIENT_SELECT },
+    user: { select: USER_SELECT },
+  },
+} as const;
+
 @Injectable()
 export class PrescriptionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -80,7 +102,7 @@ export class PrescriptionsService {
         },
         include: {
           items: true,
-          patient: { include: { user: { select: USER_SELECT } } },
+          patient: PATIENT_INCLUDE,
           doctor: { include: { user: { select: USER_SELECT } } },
           medicalRecord: {
             include: {
@@ -99,7 +121,7 @@ export class PrescriptionsService {
       where: { id },
       include: {
         items: true,
-        patient: { include: { user: { select: USER_SELECT } } },
+        patient: PATIENT_INCLUDE,
         doctor: { include: { user: { select: USER_SELECT } } },
         medicalRecord: {
           include: {
@@ -125,14 +147,22 @@ export class PrescriptionsService {
       where.status = query.status;
     }
 
+    // Organizational scope filters (Governorate → Hospital).
+    if (query.hospitalId) {
+      where.hospitalId = query.hospitalId;
+    } else if (query.governorate) {
+      where.hospital = { city: { governorate: query.governorate } };
+    }
+
     if (query.search) {
       where.OR = [
         {
           patient: {
-            user: {
+            nationalPatient: {
               OR: [
                 { firstName: { contains: query.search, mode: 'insensitive' } },
                 { lastName: { contains: query.search, mode: 'insensitive' } },
+                { syrianNationalId: { contains: query.search } },
               ],
             },
           },
@@ -156,8 +186,19 @@ export class PrescriptionsService {
         where,
         include: {
           items: true,
-          patient: { include: { user: { select: USER_SELECT } } },
+          patient: PATIENT_INCLUDE,
           doctor: { include: { user: { select: USER_SELECT } } },
+          hospital: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              nameAr: true,
+              city: {
+                select: { id: true, name: true, nameAr: true, governorate: true },
+              },
+            },
+          },
         },
       },
       query,
@@ -187,7 +228,7 @@ export class PrescriptionsService {
       data: { status },
       include: {
         items: true,
-        patient: { include: { user: { select: USER_SELECT } } },
+        patient: PATIENT_INCLUDE,
         doctor: { include: { user: { select: USER_SELECT } } },
       },
     });
