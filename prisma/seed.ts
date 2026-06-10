@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { Decimal } from '@prisma/client/runtime/library';
+import { seedNationalNetwork } from './seed-network';
 
 const prisma = new PrismaClient();
 
@@ -2131,6 +2132,12 @@ async function main() {
     console.log('    Skipped chain — missing Aleppo/Homs doctors.');
   }
 
+  // ─── 26. National Network — all 14 governorates (seed-network.ts) ─
+  // Layers a full national network on top of the Damascus/Aleppo/Homs
+  // demo: every governorate gets multiple, fully-populated hospitals so
+  // dashboards, reports, filters and cross-city referrals look real.
+  await seedNationalNetwork(prisma, { passwordHash: hash });
+
   // ═══════════════════════════════════════════════════════════════════
   console.log('\n========================================');
   console.log('  HMS Seed completed successfully!');
@@ -2152,11 +2159,17 @@ async function main() {
   console.log('  Homs doctor  : dr.salma.homs@hms.com');
   console.log('  Portal demo  : can.yildiz@example.com  (Damascus + Aleppo)');
   console.log('  Chain demo   : burak.celik@example.com  (Damascus → Aleppo → Homs)');
-  console.log('\nNetwork: 5 hospitals across 3 cities');
-  console.log('  Damascus    : Damascus General Hospital, Damascus Children\'s Hospital');
-  console.log('  Aleppo      : Aleppo Central Hospital, Aleppo University Hospital');
-  console.log('  Homs        : Homs Regional Hospital');
-  console.log('\nSee hms-infra/DEMO.md for the full defense walkthrough.');
+  console.log('\nNetwork: ~44 hospitals across all 14 Syrian governorates');
+  console.log('  Flagship demo : Damascus General, Aleppo Central, Homs Regional');
+  console.log('  + a full national network (see seed-network.ts) covering every governorate');
+  console.log('\nGenerated-hospital login pattern (password: password123):');
+  console.log('  Hospital admin : admin.<hospital-code>@hms.com   e.g. admin.hma-nat-01@hms.com');
+  console.log('  Doctors        : dr.<n>.<hospital-code>@hms.com  e.g. dr.1.hma-nat-01@hms.com');
+  console.log('  Nurse/Pharm/Lab: nurse.<code>@, pharmacist.<code>@, lab.<code>@hms.com');
+  console.log('  Receptionist   : reception.<hospital-code>@hms.com');
+  console.log('  Patient portal : patient.<1-4>.<hospital-code>@hms.com');
+  console.log('  Regional admin : regional.<governorate>@hms.com  e.g. regional.hama@hms.com');
+  console.log('\nSee hms-infra/DEMO.md and SEED_CREDENTIALS.md for the full walkthrough.');
   console.log('========================================\n');
 }
 
